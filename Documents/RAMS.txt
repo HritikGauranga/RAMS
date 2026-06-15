@@ -1,0 +1,1836 @@
+Remote Alarm Monitoring System
+Table of Contents
+1.	Product Overview
+2.	System Features
+3.	System Operation
+4.	Accessing the Web Interface
+5.	Dashboard
+6.	Digital Input Configuration
+7.	Analog Input Configuration
+8.	Relay Output Configuration
+9.	Alarm Management
+10.	SMS Notification System
+11.	SMS Command Structure
+12.	Phone Number Management
+13.	Network Configuration
+14.	Event Logging
+15.	Diagnostics
+1. Product Overview
+The Remote Alarm Monitoring System is an industrial monitoring and notification device designed for remote supervision of equipment, processes, and infrastructure. The system continuously monitors digital and analog field signals and automatically generates SMS notifications when configured alarm conditions occur.
+Configuration and monitoring are performed through an embedded Web User Interface accessible through either Access Point (AP) Mode or Ethernet connectivity. The system also supports remote interaction through SMS commands for status reporting, alarm acknowledgement, output control, and configuration management.
+The Remote Alarm Monitoring System has been designed as a flexible and cost-effective solution for applications requiring alarm notification, equipment supervision, and remote access without the complexity of a traditional SCADA system.
+
+
+2. System Features
+The system provides the following functionality:
+Inputs
+• 4 Digital Inputs for monitoring dry contacts, switches, and alarm signals
+• 2 Analog Inputs (4–20mA) for process variable monitoring such as level, pressure, or flow
+Outputs
+• 2 Relay Outputs for remote control and alarm indication applications
+Communications
+• SMS Notifications for alarm, return, acknowledgement, and status reporting
+• SMS Remote Configuration for modifying settings and controlling outputs remotely
+• Ethernet Access for local network connectivity and web-based configuration
+• Access Point Configuration Mode for direct wireless access during commissioning and maintenance
+Storage
+• Configuration Storage for retaining user settings and system parameters
+• Event Logging using LittleFS for recording alarms, returns, acknowledgements, and system events ----> (Park for now)
+Security
+• Web Login Authentication to restrict access to authorized personnel
+• Authorized Number List for trusted phone numbers with elevated SMS privileges
+• PIN Protected SMS Commands for secure remote configuration and control
+Monitoring
+• Alarm Detection for digital and analog input alarm conditions
+• Alarm Acknowledgement to confirm receipt and review of active alarms
+• Alarm Return Detection to identify restoration of normal operating conditions
+• Event Logging for maintaining a historical record of system activity and alarms
+3. System Operation
+The system continuously monitors all configured Digital Inputs and Analog Inputs.
+When an alarm condition is detected:
+
+Condition becomes true
+↓
+Start TTA timer
+↓
+TTA expires
+↓
+Send ALERT message
+↓
+Event logged
+↓
+Condition remains true
+↓
+No more messages
+↓
+Condition becomes normal
+↓
+Start TTR timer
+↓
+TTR expires
+↓
+Send RETURN message
+↓
+Event logged
+↓
+Back to normal
+4. Accessing the Web Interface
+The Remote Alarm Monitoring System provides an embedded Web User Interface for configuration, monitoring, and diagnostics. The Web Interface can be accessed using either Access Point (AP) Mode or Ethernet Mode.
+4.1 Access Point (AP) Mode
+Access Point Mode is intended for initial commissioning, maintenance, and recovery operations when Ethernet access is unavailable.
+To enter AP Mode:
+1.	Press the AP Button located on the device.
+2.	The device enables its internal Wi-Fi Access Point.
+3.	Connect a mobile phone, tablet, or computer to the device Wi-Fi network.
+4.	Open a web browser.
+5.	Navigate to the default address:
+http://20.20.20.20
+6.	Enter the administrator credentials to access the Web Interface.
+Default Credentials:
+Username: Admin & Password: Admin@123
+Note:  The currently assigned IP address shall be displayed on the Dashboard page as “TCP END POINT”, You can use this IP to access WEB UI on you network. (When Ethernet is Connected)
+
+4.2 Ethernet Mode
+Ethernet Mode is intended for normal operation and day-to-day access to WEB UI.
+The device supports:
+• DHCP Address Assignment
+• Static IP Address Configuration
+When connected to a network, the device may be accessed through its assigned IP address using any standard web browser.
+Example: http://192.168.8.247
+Note: The currently assigned IP address shall be displayed on the Dashboard page.
+4.3 Login Authentication
+Access to the Web Interface requires administrator authentication.
+Default Login Credentials:
+Username: Admin & Password: Admin@123
+4.4 Web Interface Navigation
+The Web Interface shall provide navigation to the following pages:
+• Dashboard
+• Digital Inputs
+• Analog Inputs
+• Digital Outputs
+• Alarm Management
+• Phone Number Management
+• Network Configuration
+• Event Logs
+• Diagnostics
+The navigation menu shall remain accessible from all pages within the Web Interface.
+4.5 Commissioning Workflow
+A typical commissioning workflow is:
+1.	Power the device.
+2.	Press the AP Button.
+3.	Connect to the device Access Point.
+4.	Open the Web Interface.
+5.	Configure Site Information.
+6.	Configure Network Settings.
+7.	Configure Inputs and Outputs.
+8.	Configure Phone Numbers.
+9.	Save Configuration.
+10.	Connect Ethernet and access the device through its assigned IP address.
+5. Dashboard
+The Dashboard is the default page displayed after successful login. It provides a high-level overview of the system status, communication status, alarm activity, and device information.
+The Dashboard is intended to provide operators and maintenance personnel with immediate visibility of the overall operating condition of the system. Detailed status and live values for Digital Inputs, Analog Inputs, and Digital Outputs shall be displayed within their respective configuration pages.
+5.1 General Information
+The following information shall be displayed at the top of the Dashboard:
+Site Name (User-configurable name used to identify the installation site.)
+Example:
+Gauranga Site 01
+
+Serial Number (Unique device identifier assigned during manufacturing.)
+Example:
+RAMS-0001
+
+System Uptime (Time elapsed since the last device restart.)
+Example:
+15 Days 12 Hours 34 Minutes
+
+5.2 Network Information
+Ethernet Status
+Indicates current Ethernet connection state.
+Possible Values:
+• Connected
+• Disconnected
+DHCP Status
+Displays whether DHCP is enabled.
+Possible Values:
+• Enabled
+• Disabled
+TCP Endpoint
+Displays the current device IP address used to access the Web Interface.
+Example:
+192.168.4.247
+5.2 Cellular Information
+Signal Strength
+Displays current cellular network signal quality.
+Possible Values:
+• Excellent
+• Good
+• Poor
+• No Signal
+
+SIM Status
+Displays SIM card status.
+Possible Values:
+• Ready
+• Not Detected
+• Network Error
+5.4 Alarm Summary
+The Dashboard shall provide a summary of all alarm activity.
+Displayed Information:
+Active Alarm Count (Number of alarms currently active.)
+Acknowledged Alarm Count (Number of alarms acknowledged but not yet returned.)
+Unacknowledged Alarm Count (Number of alarms awaiting acknowledgement.)
+
+5.5 Event Summary ---- (Park for now)
+The Dashboard shall display event logging information.
+Displayed Information:
+Total Events Stored
+Current number of events stored in the event log.
+Log Capacity 
+Maximum event log capacity.
+Example:
+352 / 1000 Events
+5.6 Phone Number Summary
+The Dashboard shall display the configured communication settings.
+Displayed Information:
+
+Authorized Numbers
+
+Number of configured authorized phone numbers.
+Example:
+3 / 5 Configured
+Event Recipients
+Number of configured recipient phone numbers.
+Example:
+5 / 5 Configured
+5.7 Quick Navigation
+The Dashboard shall provide quick access links to the following configuration pages:
+• Digital Inputs
+• Analog Inputs
+• Relay Outputs
+• Alarm Management
+• Phone Number Management
+• Network Configuration
+• Event Logs
+• Diagnostics
+5.8 Refresh Behavior
+Dashboard information shall automatically refresh without requiring the user to reload the page. The refresh interval shall be configurable within the firmware implementation.
+Default:
+5 Seconds
+5.9 Input and Output Status Display
+Current operating status, alarm state, and live values shall be displayed within the respective configuration pages:
+• Digital Inputs Page
+• Analog Inputs Page
+• Digital Outputs Page
+This approach keeps the Dashboard concise while allowing detailed monitoring and configuration within each dedicated I/O page.
+6. Digital Input Configuration
+The Remote Alarm Monitoring System provides four configurable Digital Inputs.
+Each Digital Input can be independently configured to monitor external contacts, switches, relays, fault outputs, security sensors, float switches, and other dry-contact devices.
+Each input operates independently and maintains its own alarm state, timing parameters, notification settings, and event history.
+6.1 Digital Input Overview
+Supported Input Types:
+• Normally Open (NO)
+• Normally Closed (NC)
+Each Digital Input supports:
+• Enable / Disable
+• Input Name
+• Input Type
+• Time to Alarm
+• Time to Return
+• Alarm SMS Notification
+• Return SMS Notification
+• Alarm Message
+• Return Message
+• Select Contact
+
+
+6.2 Input Enable
+Enables or disables monitoring of the selected input.
+Possible Values:
+• Enabled
+• Disabled
+When disabled:
+• Input state is ignored
+• No alarms are generated
+• No SMS messages are sent
+• No output actions are triggered
+6.3 Input Name
+User-defined description used throughout the system.
+The configured name appears in:
+• Dashboard
+• SMS Notifications
+• Event Logs
+• Alarm History
+Examples:
+• Main Door
+• Generator Fault
+6.4 Input Type
+Determines how the input is interpreted.
+Normally Open (NO)
+The input is considered normal when the contact is open.
+Alarm occurs when the contact closes.
+
+Normally Closed (NC)
+The input is considered normal when the contact is closed.
+Alarm occurs when the contact opens.
+6.5 Time to Alarm (TTA)
+Defines the delay between detection of an alarm condition and activation of the alarm.
+Purpose:
+Prevents false alarms caused by:
+• Contact Bounce
+• Electrical Noise
+• Short Duration Events
+Range:
+1 to 65535 Seconds
+
+Example:
+Input:
+Generator Fault
+
+Time to Alarm:
+30 Seconds
+
+Operation:
+1.	Fault occurs
+2.	Timer starts
+3.	Condition remains active for 30 seconds
+4.	Alarm becomes active
+5.	SMS notification sent
+If the fault clears before 30 seconds:
+• Alarm is cancelled 
+• No SMS is sent
+
+6.6 Time to Return (TTR)
+Defines the delay required before an active alarm returns to normal.
+Purpose:
+Prevents alarm chattering and repeated notifications.
+Range:
+1 to 65535 Seconds
+Example:
+Input:
+Tank Float
+
+Time To Return:
+60 Seconds
+
+Operation:
+1.	Alarm active
+2.	Float returns to normal
+3.	Return timer starts
+4.	Condition remains normal for 60 seconds
+5.	Alarm cleared
+6.	Return SMS transmitted
+
+6.7 Alarm SMS Notification
+Controls whether an SMS is sent when the alarm becomes active.
+Possible Values:
+• Enabled
+• Disabled
+When enabled:
+SMS notification is sent to all configured Event Recipients.
+6.8 Return SMS Notification
+Controls whether an SMS is sent when the alarm returns to normal.
+Possible Values:
+• Enabled
+• Disabled
+When enabled:
+Return notification is sent to all configured Event Recipients.
+6.9 Alarm Message
+Custom message transmitted when an alarm occurs.
+Example:
+Input Name:
+Generator Fault
+
+Alarm Message:
+For State “0”: Normal
+For State “1”: Fault Detected
+
+Example SMS:
+[ALARM]
+Site: Pump Station 01
+Input: Generator Fault
+State: FAULT DETECTED (OR State: Noraml)
+6.10 Return Message
+Custom message transmitted when the alarm returns to normal.
+Example:
+GENERATOR FAULT CLEARED
+Example SMS:
+[RETURN]
+Site: Pump Station 01
+Input: Generator Fault
+State: FAULT CLEARED
+6.11 Select Contact
+User can select on which Phone No. SMS should be delivered. 
+The recipient list shall be populated automatically from contacts configured in the Contact Configuration page.
+Only enabled contacts shall be available for selection.
+
+When an Alert condition occurs and the Time To Alarm (TTA) period expires, the configured Alert SMS shall be transmitted to all selected contacts.
+When the Return condition occurs and the Time To Return (TTR) period expires, the configured Return SMS shall be transmitted to all selected contacts.
+6.12 Alarm Processing Sequence
+Digital Input alarms follow the sequence below:
+NORMAL
+↓
+Alarm Condition Detected
+↓
+Time to Alarm Running
+↓
+ALARM ACTIVE
+↓
+SMS Notification Sent
+↓
+Alarm Acknowledged (Optional)
+↓
+Condition Returns to Normal
+↓
+Time to Return Running
+↓
+RETURN TO NORMAL
+↓
+Return SMS Sent
+6.13 Event Logging --- (Park for now)
+The following events shall be recorded:
+• Alarm Activated
+• Alarm Acknowledged
+• Alarm Returned
+• Configuration Changed
+Example Event Log:
+2026-06-09 14:22:31
+DI1 Alarm Activated
+Generator Fault
+2026-06-09 14:25:40
+Alarm Acknowledged
+Generator Fault
+2026-06-09 14:31:05
+DI1 Alarm Returned
+Generator Fault
+6.14 Dashboard Representation
+Each Digital Input shall display:
+• Input Name
+• Current State
+• Alarm Status
+Example:
+Input	State	Alarm
+Main Door	Normal	No
+Generator Fault	Alarm	Yes
+Pump Running	Normal	No
+Tank Float	Normal	No
+		
+7. Analog Input Configuration
+The Remote Alarm Monitoring System provides two configurable Analog Inputs designed for monitoring industry-standard 4–20mA instrumentation signals. Each Analog Input can be independently configured with custom scaling, engineering units, alarm thresholds, timing parameters, notification settings, and alarm behavior. Analog Inputs are intended for monitoring process variables such as tank levels, pressure transmitters, flow transmitters, temperature transmitters, and other industrial sensors utilizing 4–20mA output signals.
+7.1 Analog Input Overview
+Each Analog Input supports:
+• Enable / Disable
+• Input Name
+• Engineering Unit
+• Scale Low Value
+• Scale High Value
+• Alarm Type
+• Set Point
+• Reset Point
+• Time To Alarm
+• Time To Return
+• Alarm SMS Notification
+• Return SMS Notification
+• Alarm Message
+• Return Message
+• Select Contact
+
+7.2 Input Enable
+Enables or disables monitoring of the selected Analog Input.
+Possible Values:
+• Enabled
+• Disabled
+When disabled:
+• Input value is ignored
+• Alarm processing is disabled
+• No SMS notifications are generated
+• No alarm events are logged
+7.3 Input Name
+User-defined description used throughout the system.
+The configured name appears in:
+• Dashboard
+• SMS Notifications
+• Event Logs
+• Alarm History
+
+Examples:
+• Tank Level
+• Water Pressure
+• Fuel Level
+• Process Temperature
+7.4 Engineering Units
+Defines the engineering unit associated with the measured value.
+Examples:
+• Liters
+• Percentage (%)
+• Bar
+• PSI
+• °C
+• °F
+• mA
+• Volts
+• Custom Text
+The selected engineering unit shall be displayed on all monitoring pages, SMS messages, and event logs.
+7.5 Scaling Configuration
+Analog Inputs shall support conversion of the incoming 4–20mA signal into user-defined engineering values.
+The electrical input range remains fixed:
+4mA = Minimum Value
+20mA = Maximum Value
+Users may configure the engineering range.
+
+Example:
+Input Name:
+Tank Level
+Configuration:
+Scale Low = 0
+Scale High = 5000
+Unit = Liters
+Result:
+4mA = 0 Liters
+20mA = 5000 Liters
+12mA = 2500 Liters
+7.6 Alarm Types
+Each Analog Input supports four alarm modes.
+High Alarm
+Alarm activates when the measured value rises above the configured Set Point.
+Alarm clears when the value falls below the configured Reset Point.
+Example:
+Set Point = 80
+Reset Point = 75
+Operation:
+Value ≥ 80
+Alarm Active
+Value ≤ 75
+Alarm Cleared
+
+Low Alarm
+Alarm activates when the measured value falls below the configured Set Point.
+Alarm clears when the value rises above the configured Reset Point.
+
+Example:
+Set Point = 20
+Reset Point = 25
+Operation:
+Value ≤ 20
+Alarm Active
+Value ≥ 25
+Alarm Cleared
+
+In-Band Alarm
+Alarm activates when the measured value enters a defined operating range.
+Example:
+Set Point = 40
+Reset Point = 60
+Alarm Active:
+40 to 60
+Alarm Cleared:
+Outside configured range
+Out-of-Band Alarm
+Alarm activates when the measured value leaves a defined operating range.
+Example:
+Lower Limit = 40
+Upper Limit = 60
+Alarm Active:
+Below 40 or Above 60
+Alarm Cleared:
+40 to 60
+7.7 Set Point
+Defines the value at which an alarm condition becomes active.
+The Set Point interpretation depends on the selected alarm type.
+Examples:
+High Level Alarm:
+Set Point = 4500 Liters
+High Pressure Alarm:
+Set Point = 8 Bar
+Low Level Alarm:
+Set Point = 10%
+7.8 Reset Point
+Defines the value required to clear an active alarm.
+The Reset Point provides hysteresis and prevents repeated alarm activation caused by small fluctuations around the alarm threshold.
+Example:
+Set Point = 80%
+Reset Point = 75%
+Operation:
+Value reaches 80%
+Alarm Active
+Value fluctuates between 79% and 78%
+Alarm remains active
+Value falls to 75%
+Alarm Cleared
+7.9 Time To Alarm (TTA)
+Defines the delay before an alarm becomes active after the Set Point condition has been met.
+Purpose:
+Prevents nuisance alarms caused by short-duration process fluctuations.
+7.10 Time To Return (TTR)
+Defines the delay before an alarm returns to normal after the Reset Point condition has been met.
+Purpose:
+Provides stability and prevents alarm chattering.
+Range:
+1 to 65535 Seconds
+7.11 Alarm SMS Notification
+Controls whether SMS notifications are sent when an alarm becomes active.
+Possible Values:
+• Enabled
+• Disabled
+When enabled:
+Notifications shall be transmitted to all configured Event Recipients.
+7.12 Return SMS Notification
+Controls whether SMS notifications are sent when the alarm returns to normal.
+Possible Values:
+• Enabled
+• Disabled
+7.13 Alarm Message
+User-defined message transmitted when an alarm becomes active.
+Example:
+HIGH WATER LEVEL DETECTED
+Example SMS:
+[ALARM]
+Site: Water Tank A
+Input: Tank Level
+Value: 4700 Liters (value followed by selected Eng. Unit)
+State: HIGH WATER LEVEL DETECTED (OR State: NORMAL)
+7.14 Return Message
+User-defined message transmitted when the alarm returns to normal.
+Example:
+WATER LEVEL RETURNED TO NORMAL
+7.15 Select Contact
+User can select on which Phone No. SMS should be delivered. 
+The recipient list shall be populated automatically from contacts configured in the Contact Configuration page.
+Only enabled contacts shall be available for selection.
+
+When an Alert condition occurs and the Time To Alarm (TTA) period expires, the configured Alert SMS shall be transmitted to all selected contacts.
+When the Return condition occurs and the Time To Return (TTR) period expires, the configured Return SMS shall be transmitted to all selected contacts.
+7.16 Alarm Processing Sequence
+Analog Inputs follow the same alarm state model used by Digital Inputs.
+NORMAL
+↓
+Threshold Condition Detected
+↓
+Time To Alarm Running
+↓
+ALARM ACTIVE
+↓
+SMS Notification Sent
+↓
+Alarm Acknowledged (Optional)
+↓
+Return Condition Detected
+↓
+Time To Return Running
+↓
+RETURN TO NORMAL
+↓
+Return SMS Sent
+7.17 Event Logging (Park for now)
+The following Analog Input events shall be stored in the Event Log:
+• Alarm Activated
+• Alarm Acknowledged
+• Alarm Returned
+• Configuration Changed
+
+Example:
+2026-06-09 15:20:11
+AI1 High Alarm Activated
+Tank Level
+Value: 4700 Liters
+2026-06-09 15:42:30
+AI1 Alarm Returned
+Tank Level
+Value: 4300 Liters
+7.18 Live Status Display
+Current Analog Input values shall be displayed within the Analog Input Configuration page.
+Displayed Information:
+• Input Name
+• Current Value
+• Engineering Unit
+• Alarm Status
+• Alarm Type
+This information shall update automatically without requiring page refresh.
+8. Digital Output Configuration
+The Remote Alarm Monitoring System provides two configurable Digital(Relay) Outputs.
+Relay Outputs may be controlled manually through the Web Interface, remotely through SMS commands, or automatically in response to alarm conditions. Each Relay Output operates independently and maintains its own configuration, operating mode, timing parameters, and event history.
+8.1 Relay Output Overview
+Each Relay Output supports:
+• Enable / Disable
+• Output Name
+• Default Power-Up State
+• SMS Control
+• Alarm Control
+• Event Logging ---> (park for now)
+8.2 Output Enable
+Enables or disables operation of the selected Relay Output.
+Possible Values:
+• Enabled
+• Disabled
+When disabled:
+• Manual control is blocked
+• SMS control is blocked
+• Alarm activation is blocked
+• Output remains OFF
+8.3 Output Name
+User-defined description used throughout the system.
+The configured name appears in:
+• Dashboard
+• SMS Notifications
+• Event Logs
+• Alarm History
+Examples:
+• Siren
+• Alarm Beacon
+8.4 Default Power-Up State
+Defines the relay state after device startup or reboot.
+Possible Values:
+• OFF
+• ON
+Default:
+OFF
+8.6 SMS Control
+Allows the relay output to be controlled using SMS commands.
+Possible Values:
+• Enabled
+• Disabled
+When enabled:
+The output may be controlled by:
+• Authorized Numbers
+• PIN Protected Commands
+Example Commands:
+DO1 ON
+DO1 OFF
+8.7 Alarm Control
+Allows the relay output to automatically activate when a configured alarm occurs.
+Possible Values:
+• Enabled
+• Disabled
+When enabled:
+The selected output may be linked to one or more alarm conditions.
+Example:
+AI1 High Level Alarm
+↓
+DO1 Activated
+8.8 Output Modes
+Each Relay Output supports the following operating modes.
+8.10 SMS Command Examples
+Manual Control:
+DO1 ON
+DO1 OFF
+DO2 ON
+DO2 OFF
+Pulse Control:
+DO1 PULSE 30
+DO2 PULSE 300
+Status Request:
+OUTPUTS
+Example Response:
+DO1 : OFF
+DO2 : ON
+8.12 Event Logging
+The following events shall be recorded:
+• Output Activated
+• Output Deactivated
+• Pulse Started
+• Pulse Completed
+• Alarm Activation
+• Manual Operation
+• SMS Operation
+• Configuration Changes
+Examples:
+2026-06-09 16:20:10
+DO1 ON
+Source: SMS Command
+2026-06-09 16:20:40
+DO1 OFF
+Source: Pulse Timeout
+8.13 Relay Output Status Display
+Current Relay Output information shall be displayed within the Relay Output Configuration page.
+Displayed Information:
+• Output Name
+• Current State
+• Operating Mode
+• Pulse Status
+• Alarm Source
+• Last Activation Time
+The displayed information shall automatically refresh without requiring page reload.
+8.14 Relay Output Processing Sequence
+Manual Mode:
+OFF
+↓
+User Command
+↓
+ON
+↓
+User Command
+↓
+OFF
+Pulse Mode:
+OFF
+↓
+Pulse Command
+↓
+ON
+↓
+Pulse Timer Running
+↓
+OFF
+Alarm Mode:
+OFF
+↓
+Alarm Activated
+↓
+ON
+↓
+Alarm Returned
+↓
+OFF
+9. Alarm Management
+The Alarm Management system is responsible for monitoring all configured Digital Inputs and Analog Inputs, generating alarm events, notifying users, controlling outputs, and maintaining alarm history. Each configured alarm operates independently and maintains its own status, timing parameters, acknowledgement state, and event history.
+The Alarm Management system is designed to prevent nuisance alarms while ensuring critical events are reported reliably.
+9.1 Alarm Identification
+Every alarm generated by the system shall be assigned a unique Alarm ID.
+Alarm IDs are used for:
+• SMS Notifications
+• Alarm Acknowledgement
+• Event Logs
+• Alarm History
+Example:
+Alarm ID: 101
+Alarm Source: AI1
+Alarm Type: High Level
+9.2 Alarm States
+An alarm may exist in one of the following states:
+Normal
+Input operating within configured limits.
+No active alarm exists.
+Pending Alarm
+Alarm condition detected.
+Time To Alarm timer running.
+Alarm not yet active.
+No notification transmitted.
+Alarm Active
+Alarm condition confirmed.
+Alarm SMS transmitted.
+Alarm event logged.
+Optional relay actions executed.
+Acknowledged
+Alarm has been acknowledged by an operator.
+Alarm condition still exists.
+Alarm remains active until return condition occurs.
+Pending Return
+Return condition detected.
+Time To Return timer running.
+Alarm remains active.
+No return notification transmitted.
+Returned To Normal
+Alarm condition cleared.
+Return SMS transmitted.
+Return event logged.
+Alarm cycle completed.
+9.3 Alarm Processing Sequence
+The standard alarm sequence shall be:
+NORMAL
+↓
+Alarm Condition Detected
+↓
+PENDING ALARM
+↓
+Time To Alarm Expired
+↓
+ALARM ACTIVE
+↓
+Alarm SMS Sent
+↓
+Alarm Acknowledged (Optional)
+↓
+Return Condition Detected
+↓
+PENDING RETURN
+↓
+Time To Return Expired
+↓
+RETURNED TO NORMAL
+↓
+Return SMS Sent
+↓
+NORMAL
+9.4 Alarm Acknowledgement
+Alarm acknowledgement allows an operator to confirm that an alarm has been observed.
+Acknowledgement does not clear the alarm.
+The alarm remains active until the configured return condition occurs.
+Example:
+AI1 High Level Alarm
+↓
+Alarm Active
+↓
+ACK 101
+↓
+Alarm Acknowledged
+↓
+Level Still High
+↓
+Alarm Remains Active
+↓
+Level Returns To Normal
+↓
+Alarm Cleared
+9.5 Alarm Acknowledgement Methods
+Alarms may be acknowledged using:
+SMS Command
+Example:
+ACK 101
+Web Interface
+Operator selects:
+Acknowledge Alarm
+(from the Alarm Management page.)
+9.6 Active Alarm List
+The Alarm Management page shall display all currently active alarms.
+Displayed Information:
+• Alarm ID
+• Alarm Source
+• Alarm Type
+• Current Status
+• Alarm Value
+• Alarm Time
+• Acknowledgement Status
+Example:
+Alarm ID	Source	Type	Status
+101	AI1	High Level	Active
+102	DI2	Fault	Acknowledged
+________________________________________
+9.7 Alarm History
+The system shall maintain a historical record of alarm activity.
+Stored Information:
+• Alarm ID
+• Alarm Source
+• Alarm Type
+• Activation Time
+• Acknowledgement Time
+• Return Time
+• Alarm Duration
+9.8 Alarm Notifications
+When an alarm becomes active:
+1.	Alarm event recorded
+2.	SMS notification generated
+3.	Event Recipients notified
+4.	Associated outputs activated (if configured)
+Example:
+[ALARM]
+Site: Pump Station 01
+Alarm ID: 101
+Source: Tank Level
+Value: 4700 Liters
+Message: HIGH WATER LEVEL DETECTED
+9.9 Return Notifications
+When an alarm returns to normal:
+1.	Return event recorded
+2.	Return SMS generated
+3.	Event Recipients notified
+4.	Alarm-controlled outputs released
+Example:
+[RETURN]
+Site: Pump Station 01
+Alarm ID: 101
+Source: Tank Level
+Value: 4200 Liters
+Message: WATER LEVEL RETURNED TO NORMAL
+9.10 Alarm-To-Output Linking
+Relay Outputs may be linked to alarm conditions.
+Example:
+AI1 High Level Alarm
+↓
+DO1 ON
+↓
+Alarm Returns
+↓
+DO1 OFF
+
+Multiple alarms may activate the same relay output.
+9.11 Alarm Event Logging
+The following events shall be logged:
+• Alarm Activated
+• Alarm Acknowledged
+• Alarm Returned
+• Alarm Notification Sent
+• Return Notification Sent
+• Alarm Output Activated
+• Alarm Output Released
+Examples:
+2026-06-09 14:22:10
+Alarm Activated
+AI1 High Level
+Alarm ID: 101
+2026-06-09 14:23:05
+Alarm SMS Sent
+Alarm ID: 101
+9.12 Alarm Summary
+The Alarm Management page shall display:
+• Total Active Alarms
+• Total Acknowledged Alarms
+• Total Unacknowledged Alarms
+• Most Recent Alarm
+• Most Recent Return Event
+This information shall automatically refresh without requiring manual page reload.
+10. SMS Notification System
+The Remote Alarm Monitoring System provides SMS notification capabilities to inform users of alarm events, return events, output operations, and system activities.
+SMS notifications are transmitted through the cellular communication interface and delivered to configured Event Recipient phone numbers. The SMS Notification System is designed to provide timely and reliable information regarding the operational status of the monitored site.
+10.1 Overview
+The system supports automatic SMS transmission for:
+• Alarm Activation
+• Alarm Return
+• Alarm Acknowledgement
+• Relay Output Operations
+• Configuration Changes
+• System Restart Events
+• Manual Status Requests
+10.2 Event Recipients
+The system supports up to five Event Recipient phone numbers.
+Recipients receive SMS notifications generated by the system.
+Maximum Recipients:
+5
+Displayed Information:
+• Recipient Name
+• Phone Number
+• Enable / Disable
+Example:
+Slot	Name	Phone Number	Status
+1	Supervisor	+91XXXXXXXXXX	Enabled
+2	Maintenance	+91XXXXXXXXXX	Enabled
+3	Manager	+91XXXXXXXXXX	Enabled
+4	Spare	+91XXXXXXXXXX	Disabled
+5	Spare	+91XXXXXXXXXX	Disabled
+
+10.3 Alarm Notification Messages
+Alarm notifications are transmitted when an alarm becomes active.
+Typical Message Structure:
+[ALARM]
+Site: Pump Station 01
+Alarm ID: 101
+Source: Tank Level
+Value: 4700 Liters
+Message: HIGH WATER LEVEL DETECTED
+Time: 2026-06-09 14:22:10
+Digital Input Example
+[ALARM]
+Site: Pump Station 01
+Alarm ID: 102
+Input: Generator Fault
+Message: GENERATOR FAULT DETECTED
+Time: 2026-06-09 14:25:32
+Analog Input Example
+[ALARM]
+Site: Water Tank
+Alarm ID: 103
+Input: Tank Level
+Value: 4700 Liters
+Message: HIGH WATER LEVEL DETECTED
+Time: 2026-06-09 14:28:15
+10.4 Return Notification Messages
+Return notifications are transmitted when an alarm condition clears and the Time To Return period expires.
+Typical Message Structure:
+[RETURN]
+Site: Pump Station 01
+Alarm ID: 101
+Source: Tank Level
+Value: 4200 Liters
+Message: WATER LEVEL RETURNED TO NORMAL
+Time: 2026-06-09 15:10:05
+10.5 Alarm Acknowledgement Notifications
+Optional acknowledgement notifications may be transmitted when an alarm is acknowledged.
+Example:
+[ACKNOWLEDGED]
+Site: Pump Station 01
+Alarm ID: 101
+Acknowledged By: SMS
+Time: 2026-06-09 14:30:10
+10.6 Relay Output Notifications
+The system may transmit notifications when relay outputs change state.
+Example:
+[OUTPUT]
+Site: Pump Station 01
+Output: Siren
+State: ON
+Source: AI1 High Alarm
+Time: 2026-06-09 14:22:12
+10.7 Configuration Change Notifications
+The system may notify Event Recipients whenever configuration parameters are modified.
+Examples:
+• Analog Input Configuration Changed
+• Digital Input Configuration Changed
+• Network Configuration Changed
+• Authorized Numbers Updated
+• Recipient Numbers Updated
+Example:
+[CONFIG]
+Site: Pump Station 01
+Parameter: AI1 Set Point
+Old Value: 4500
+New Value: 4700
+Time: 2026-06-09 16:10:40
+10.8 System Restart Notifications
+The system may generate an SMS notification following a device restart.
+Example:
+[SYSTEM]
+Site: Pump Station 01
+Device Restarted
+Time: 2026-06-09 08:00:15
+10.9 SMS Delivery Process
+When an event occurs:
+1.	Event detected
+2.	SMS message generated
+3.	Recipient list loaded
+4.	SMS transmitted sequentially
+5.	Transmission result logged
+6.	Next recipient processed
+The system shall continue transmission until all enabled recipients have been processed.
+10.10 SMS Message Length
+Messages should be formatted to remain within standard SMS limitations whenever possible.
+The system shall prioritize:
+• Site Name
+• Alarm Identification
+• Event Description
+• Current Value (if applicable)
+• Timestamp
+10.11 Failed SMS Handling
+If message transmission fails:
+• Failure event logged
+• Recipient processing continues
+• System operation remains unaffected
+Failure Reasons May Include:
+• No Cellular Signal
+• SIM Error
+• Network Unavailable
+• SMS Service Failure
+10.12 SMS Transmission Logging
+The following SMS events shall be recorded:
+• Alarm SMS Sent
+• Return SMS Sent
+• Acknowledgement SMS Sent
+• Output Notification Sent
+• Configuration Notification Sent
+• SMS Transmission Failed
+Example:
+2026-06-09 14:22:11
+SMS Sent
+Recipient: +91XXXXXXXXXX
+Alarm ID: 101
+Status: Success
+2026-06-09 14:22:13
+SMS Sent
+Recipient: +91XXXXXXXXXX
+Alarm ID: 101
+Status: Success
+10.13 SMS Notification Enable Options
+Each monitored input may independently enable or disable:
+• Alarm Notifications
+• Return Notifications
+• Acknowledgement Notifications
+This allows notification behavior to be customized for individual applications.
+10.14 SMS Notification Summary
+The SMS Notification System provides:
+• Alarm Notifications
+• Return Notifications
+• Acknowledgement Notifications
+• Output Notifications
+• Configuration Notifications
+• System Notifications
+• Event Recipient Management
+• SMS Transmission Logging
+The SMS Notification System forms the primary remote communication mechanism of the Remote Alarm Monitoring System.
+11. SMS Command Structure
+The Remote Alarm Monitoring System supports SMS-based interaction for status monitoring, alarm acknowledgement, relay control, and remote configuration. SMS commands are processed automatically upon receipt and validated according to the sender’s authorization level.
+The SMS Command System provides four access levels:
+• Public Access
+• PIN-Protected Access
+• Authorized Number Access
+• Event Recipient Access
+11.1 SMS Command Processing
+Upon receiving an SMS message:
+1.	SMS received
+2.	Sender number identified
+3.	Command parsed
+4.	Authorization verified
+5.	Command executed
+6.	Response generated
+7.	Event logged
+Invalid commands shall generate an error response.
+11.2 Access Levels
+Public Access
+Available to any phone number.
+Permitted Operations:
+• Status Requests
+• Input Status Requests
+• Output Status Requests
+• Signal Status Requests
+• Firmware Version Requests
+Public users cannot:
+• Modify configuration
+• Control outputs
+• Acknowledge alarms
+PIN-Protected Access
+Available to any phone number possessing the correct PIN.
+Permitted Operations:
+• Configuration Changes
+• Output Control
+• Alarm Acknowledgement
+• Network Configuration
+• Phone Number Management
+Authorized Number Access
+Phone numbers contained within the Authorized Number List.
+Authorized Numbers may perform all operations without requiring a PIN.
+Event Recipients
+Event Recipients receive notifications but do not automatically receive control privileges.
+11.3 Public Commands
+
+INPUTS
+Returns current Digital Input and Analog Input status.
+Command:
+GET INPUTS
+Example Response:
+DI1: Normal
+DI2: Alarm
+DI3: Normal
+DI4: Normal
+AI1: 4200 Liters
+AI2: 4.5 Bar
+STATUS
+Returns overall system status.
+Command:
+GET STATUS
+
+Example Response:
+Location: Navi Mumbai
+Site: Pump Station 01
+Active Alarms: 1
+Signal: Good
+INPUTS
+Returns current Digital Input and Analog Input status.
+Command:
+GET INPUTS
+Example Response:
+DI1: Normal
+DI2: Alarm
+DI3: Normal
+DI4: Normal
+AI1: 4200 Liters
+AI2: 4.5 Bar
+OUTPUTS
+Returns current Relay Output status.
+Command:
+OUTPUTS
+Example Response:
+DO1: OFF
+DO2: ON
+ALARMS
+Returns active alarm information.
+Command:
+GET ALARMS
+Example Response:
+Tank Level High
+Status: Active
+11.4 Alarm Acknowledgement Commands -------> (Park for Now)
+ACK Alarm
+Command:
+ACK 101
+Operation:
+Acknowledges Alarm ID 101.
+Example Response:
+Alarm 101 Acknowledged
+11.5 Relay Output Commands
+Turn Output ON
+Command:
+DO1 ON
+Response:
+DO1 Activated
+Turn Output OFF
+Command:
+DO1 OFF
+Response:
+DO1 Deactivated
+11.6 Configuration Commands
+Configuration commands may be issued by:
+• Authorized Numbers
+OR
+• Any Number with Correct PIN
+Set Analog Input Config
+User can change/modify the entire input configuration with a single command.
+Format: PIN1234, <INPUT>, <INPUT NAME>, <Type>, <Set point>, <Reset Point>, <Time to Alarm>,<Time to Return> 
+OR
+1            = Enable
+TANK         = Name
+L            = Unit
+0            = Scale Low
+5000         = Scale High
+HIGH         = Alarm Type
+4500         = Set Point
+4300         = Reset Point
+60           = TTA
+30           = TTR
+1            = Alarm SMS
+1            = Return SMS
+Tank High    = Alarm Message
+Tank Normal  = Return Message
+
+Command:
+PIN1234, AI1, TANKLEVEL, HIGH, 4500, 4300, 60, 30
+or
+AI1= 1|TANK|L|0|5000|HIGH|4500|4300|60|30|1|1|Tank High|Tank Normal
+Operation:
+Sets AI1:
+NAME=TANK
+TYPE=HIGH
+SP=4500
+RP=4300
+TTA=60
+TTR=30
+
+Response:
+AI1 Config Updated
+11.7 Phone Number Management Commands
+Add Authorized Number
+Command:
+PIN1234 ADD AUTH +91XXXXXXXXXX
+Response:
+Authorized Number Added
+Remove Authorized Number
+Command:
+PIN1234 DEL AUTH +91XXXXXXXXXX
+Response:
+Authorized Number Removed
+Add Recipient
+Command:
+PIN1234 ADD RECIPIENT +91XXXXXXXXXX
+Response:
+Recipient Added
+Remove Recipient
+Command:
+PIN1234 DEL RECIPIENT +91XXXXXXXXXX
+Response:
+Recipient Removed
+11.8 Network Commands
+Display Network Information
+Command:
+PIN1234 GET IP
+Response:
+IP Address: 192.168.4.90
+DHCP: Enabled
+Gateway: 192.168.4.1
+Reboot Device
+Command:
+PIN1234 REBOOT
+Response:
+System Restarting
+11.9 Invalid Command Handling
+If an invalid command is received:
+Example:
+DO5 ON
+Response:
+ERROR
+Invalid Output Number
+Example:
+PIN1234 SET AI5 SP 100
+Response:
+ERROR
+Invalid Input Number
+Example:
+WRONGPIN DO1 ON
+Response:
+ERROR
+Invalid PIN
+11.10 Command Logging
+All SMS commands shall be recorded in the Event Log.
+Logged Information:
+• Timestamp
+• Sender Number
+• Commands
+• Result
+• Success/Failure Status
+Example:
+2026-06-09 14:35:10
+SMS Command
+Sender: +91XXXXXXXXXX
+Command: DO1 ON
+Result: Success
+2026-06-09 14:40:20
+SMS Command
+Sender: +91XXXXXXXXXX
+Command: SET AI1 SP 4500
+Result: Success
+11.11 SMS Command Summary
+The SMS Command System provides:
+• Status Monitoring
+• Alarm Acknowledgement
+• Relay Output Control
+• Configuration Management
+• Phone Number Management
+• Network Management
+• System Diagnostics
+• Event Logging
+The SMS Command System allows remote operation of the Remote Alarm Monitoring System without requiring access to the Web Interface.
+12. Phone Number Management
+The Remote Alarm Monitoring System provides phone number management functionality for controlling access permissions and SMS notification distribution.
+The system maintains two independent phone number lists:
+• Authorized Numbers
+• Event Recipients
+These lists are stored within the device configuration and retained following power cycles and device restarts.
+12.1 Overview
+Phone Number Management allows administrators to:
+• Configure Authorized Numbers
+• Configure Event Recipients
+• Enable or Disable Entries
+• Manage SMS Notification Routing
+• Control Remote Access Permissions
+12.2 Authorized Numbers
+Authorized Numbers are trusted phone numbers that may control and configure the system without requiring a PIN.
+Maximum Authorized Numbers:
+5
+Authorized Numbers may perform:
+• Status Requests
+• Alarm Acknowledgement
+• Relay Output Control
+• Configuration Changes
+• Network Configuration
+• Phone Number Management
+• Device Restart Commands
+12.3 Authorized Number Configuration
+Each Authorized Number entry contains:
+• Name
+• Phone Number
+• Enable / Disable
+Example:
+Slot	Name	Phone Number	Status
+1	Supervisor	+91XXXXXXXXXX	Enabled
+2	Maintenance	+91XXXXXXXXXX	Enabled
+3	Manager	+91XXXXXXXXXX	Enabled
+4	Spare	+91XXXXXXXXXX	Disabled
+5	Spare	+91XXXXXXXXXX	Disabled
+
+12.4 Authorized Number Verification
+When an SMS command is received:
+1.	Sender number identified
+2.	Authorized Number List checked
+3.	Authorization granted if match found
+4.	Command executed
+If the number is not found:
+• PIN validation is required for privileged operations
+12.5 Event Recipients
+Event Recipients receive automatic SMS notifications generated by the system.
+Maximum Event Recipients:
+5
+Event Recipients receive:
+• Alarm Notifications
+• Return Notifications
+• Acknowledgement Notifications
+• Output Notifications
+• Configuration Notifications
+• System Notifications
+Event Recipients do not automatically receive configuration privileges.
+12.6 Event Recipient Configuration
+Each Event Recipient entry contains:
+• Name
+• Phone Number
+• Enable / Disable
+Example:
+Slot	Name	Phone Number	Status
+1	Supervisor	+91XXXXXXXXXX	Enabled
+2	Maintenance	+91XXXXXXXXXX	Enabled
+3	Manager	+91XXXXXXXXXX	Enabled
+4	Spare	+91XXXXXXXXXX	Disabled
+5	Spare	+91XXXXXXXXXX	Disabled
+
+12.7 Number Validation
+Before a number is saved:
+The system shall verify:
+• Number field is not empty
+• Number format is valid
+• Entry does not already exist in the same list
+• Maximum entry limit not exceeded
+If validation fails:
+Configuration update shall be rejected.
+12.8 Enable / Disable Function
+Each entry may be individually enabled or disabled.
+Enabled Entry:
+• Active within system operations
+Disabled Entry:
+• Retained in configuration
+• Ignored by system processing
+This allows temporary suspension without deleting configuration data.
+12.9 Number Management Page
+The Web Interface shall provide a dedicated Phone Number Management page.
+Displayed Information:
+Authorized Numbers
+• Name
+• Phone Number
+• Status
+• Edit
+• Delete
+Event Recipients
+• Name
+• Phone Number
+• Status
+• Edit
+• Delete
+12.10 SMS Notification Routing
+When an event occurs:
+1.	Event generated
+2.	Event Recipient List loaded
+3.	Enabled recipients selected
+4.	SMS transmitted sequentially
+5.	Transmission result logged
+Only enabled recipients shall receive notifications.
+12.11 Configuration Change Logging
+The following events shall be recorded:
+• Authorized Number Added
+• Authorized Number Removed
+• Authorized Number Modified
+• Recipient Added
+• Recipient Removed
+• Recipient Modified
+• Entry Enabled
+• Entry Disabled
+Examples:
+2026-06-09 10:22:15
+Authorized Number Added
+Name: Supervisor
+Number: +91XXXXXXXXXX
+2026-06-09 10:35:40
+Recipient Modified\
+Name: Manager
+Number: +91XXXXXXXXXX
+12.12 Storage Requirements
+Stored Information:
+• Names
+• Phone Numbers
+• Entry Status
+Configuration shall persist through:
+• Power Loss
+• Device Restart
+• Firmware Restart
+12.13 Phone Number Management Summary
+The Phone Number Management System provides:
+• 5 Authorized Numbers
+• 5 Event Recipients
+• Independent Access Control
+• Notification Distribution
+• Enable / Disable Control
+• Configuration Validation
+• Event Logging
+The Phone Number Management System forms the foundation of SMS security and notification routing within the Remote Alarm Monitoring System.
+13. Network Configuration
+The Remote Alarm Monitoring System provides configurable network settings for Ethernet communication and Access Point (AP) operation.
+The Network Configuration page allows administrators to configure connectivity parameters required for Web Interface access and system commissioning.
+Network settings are stored in non-volatile memory and retained following power cycles and device restarts.
+13.1 Network Overview
+The system supports two access methods:
+• Access Point (AP) Mode
+• Ethernet Mode
+These access methods allow users to configure and monitor the system using a standard web browser.
+13.2 Site Information
+Site Name
+The Site Name uniquely identifies the installation location.
+The configured Site Name shall appear in:
+• Dashboard
+• SMS Notifications
+• Event Logs
+• Alarm History
+• Status Responses
+Examples:
+• Gauranga Site 01
+Maximum Length:
+50 Characters
+13.3 Ethernet Configuration
+The Ethernet interface provides network connectivity for normal operation.
+Displayed Information:
+• Connection Status
+• Current IP Address
+• Subnet Mask
+• Gateway
+• DNS Server
+13.4 DHCP Configuration
+The system supports Dynamic Host Configuration Protocol (DHCP).
+When enabled:
+• IP Address assigned automatically
+• Network settings obtained automatically
+Possible Values:
+• Enabled
+• Disabled
+Default:
+Enabled
+13.5 Static IP Configuration
+When DHCP is disabled, the user may manually configure network parameters.
+Displayed Parameters:
+IP Address
+Example:
+192.168.4.90
+Subnet Mask
+Example:
+255.255.255.0
+Gateway
+Example:
+192.168.4.1
+DNS Server
+Example:
+8.8.8.8
+13.6 TCP Endpoint
+The current network endpoint shall be displayed on the Dashboard and Network Configuration page.
+Example:
+192.168.4.90
+Users may enter the displayed address into a web browser to access the device.
+Example:
+http://192.168.4.90
+13.7 Access Point (AP) Configuration
+Access Point Mode is intended for:
+• Initial Commissioning
+• Maintenance Activities
+• Recovery Operations
+• Network Configuration
+The device enters AP Mode when the AP Button is pressed.
+13.8 AP Parameters
+AP SSID
+Wi-Fi network name broadcast by the device.
+SSID will display as RAMS followed by Serial Number
+Example:
+RAMS<SerialNumber>
+AP Password
+Password required to connect to the Access Point.
+Example:
+RAMS@1234
+13.9 AP Status
+Displayed Information:
+• AP Enabled
+• AP Disabled
+• Connected Clients
+• AP Uptime
+13.10 Network Diagnostics
+The Network Configuration page shall display:
+• Ethernet Link Status
+• Current IP Address
+• DHCP Status
+• Gateway Status
+• DNS Status
+• AP Status
+• Connected Client Count
+13.11 Configuration Changes
+When network settings are modified:
+1.	Configuration saved
+2.	Event logged
+3.	Network service restarted
+4.	New settings applied
+Some changes may require:
+• Network reconnect 
+• Device restart
+13.12 Configuration Logging
+The following network events shall be recorded:
+• DHCP Enabled
+• DHCP Disabled
+• Static IP Changed
+• Gateway Changed
+• DNS Changed
+• AP SSID Changed
+• AP Password Changed
+• AP Timeout Changed
+Examples:
+2026-06-09 12:15:30
+DHCP Disabled
+2026-06-09 12:16:20
+Static IP Updated
+New IP: 192.168.4.90
+13.13 Network Configuration Summary
+The Network Configuration System provides:
+• Site Identification
+• Ethernet Connectivity
+• DHCP Support
+• Static IP Support
+• AP Mode Access
+• TCP Endpoint Display
+• Network Diagnostics
+• Configuration Logging
+The Network Configuration System allows commissioning, maintenance, and operational access to the Remote Alarm Monitoring System.
+14. Event Logging ----- (Park for Now)
+The Event Logging System records significant system activities, alarms, operator actions, and configuration changes.
+Event logs provide historical information used for troubleshooting, diagnostics, maintenance, and operational review. All events shall be stored in non-volatile memory using the device file system.
+14.1 Overview
+The Event Logging System records:
+• Alarm Events
+• Return Events
+• Acknowledgement Events
+• Relay Output Events
+• SMS Events
+• Configuration Changes
+• Network Events
+• System Events
+14.2 Log Storage
+Event logs shall be stored using LittleFS.
+Log data shall remain available after:
+• Power Loss
+• Device Restart
+• Network Failure
+14.3 Maximum Capacity
+Maximum Event Capacity:
+1000 Events
+When storage becomes full:
+• Oldest event automatically removed
+• Newest event stored
+This ensures continuous logging without manual maintenance.
+14.4 Logged Information
+Each event record shall contain:
+• Timestamp
+• Event Type
+• Event Source
+• Description
+• Result Status
+Example:
+2026-06-09 14:22:10
+Alarm Activated
+AI1 High Level
+Success
+14.5 Alarm Events
+Recorded Alarm Events:
+• Alarm Activated
+• Alarm Acknowledged
+• Alarm Returned
+• Alarm Notification Sent
+• Alarm Notification Failed
+14.6 Relay Output Events
+Recorded Output Events:
+• Output Activated
+• Output Deactivated
+• Pulse Started
+• Pulse Completed
+• Alarm Triggered Output
+14.7 SMS Events
+Recorded SMS Events:
+• SMS Sent
+• SMS Failed
+• SMS Command Received
+• SMS Command Rejected
+14.8 Configuration Events
+Recorded Configuration Events:
+• Input Configuration Changed
+• Output Configuration Changed
+• Phone Number Changed
+• Network Configuration Changed
+• Site Information Changed
+14.9 System Events
+Recorded System Events:
+• Device Startup
+• Device Restart
+• Configuration Restore
+• Factory Reset
+14.10 Event Log Page
+The Event Log page shall display:
+• Timestamp
+• Event Category
+• Event Description
+• Status
+Displayed events shall be ordered from newest to oldest.
+14.11 Event Filtering
+The Event Log page may support filtering by:
+• Alarm Events
+• Output Events
+• SMS Events
+• Configuration Events
+• System Events
+14.12 Event Log Maintenance
+The Web Interface shall provide:
+• Clear Event Log
+Only administrators may perform this action.
+14.13 Event Logging Summary
+The Event Logging System provides:
+• Historical Event Storage
+• Alarm Tracking
+• SMS Activity Tracking
+• Configuration Auditing
+• Troubleshooting Support
+• Automatic Storage Management
+The Event Logging System serves as the primary historical record of system operation.
+15. Diagnostics
+The Diagnostics System provides real-time information regarding device operation, communication status, memory utilization, and overall system health.
+The Diagnostics page is intended to assist installers, operators, and maintenance personnel in commissioning and troubleshooting activities.
+15.1 Overview
+The Diagnostics page provides information regarding:
+• Cellular Network Status
+• SIM Status
+• Signal Strength
+• Ethernet Status
+• Network Information
+• Firmware Information
+• Device Information
+• Memory Usage
+• Storage Usage
+• System Uptime
+15.2 Device Information
+The following device information shall be displayed:
+Serial Number
+Unique identifier assigned during manufacturing.
+Example:
+RAMS-0001
+Device Name
+Configured site identifier.
+Example:
+Gauranga Site 01
+15.3 Cellular Diagnostics
+The Diagnostics page shall display current cellular communication status.
+Displayed Information:
+Network Status
+Possible Values:
+• Registered
+• Searching
+• Not Registered
+• No Service
+Signal Strength
+Possible Values:
+• Excellent
+• Good
+• Fair
+• Poor
+• No Signal
+SIM Status
+Possible Values:
+• Ready
+• Not Detected
+• PIN Required
+• Error
+Operator Information
+Displays currently connected cellular operator.
+Example:
+Airtel
+Jio
+Vi
+BSNL
+15.4 Ethernet Diagnostics
+Displayed Information:
+Ethernet Status
+Possible Values:
+• Connected
+• Disconnected
+IP Address
+Current assigned IP address.
+Example:
+192.168.4.247
+DHCP Status
+Possible Values:
+• Enabled
+• Disabled
+Gateway Address
+Example:
+192.168.4.1
+DNS Server
+Example:
+8.8.8.8
+15.5 System Diagnostics
+Displayed Information:
+System Uptime
+Time elapsed since last restart.
+Example:
+15 Days 12 Hours 34 Minutes
+System Status
+Possible Values:
+• Running
+• Initializing
+• Restarting
+• Error
+15.11 Diagnostics Summary
+The Diagnostics System provides:
+• Cellular Status Monitoring
+• Ethernet Status Monitoring
+• Network Diagnostics
+• System Health Monitoring
+• Maintenance Functions
+The Diagnostics System serves as the primary maintenance and troubleshooting interface for the Remote Alarm Monitoring System.

@@ -35,6 +35,9 @@ void setup() {
     while (true) delay(1000);
   }
 
+  Serial.printf("Used: %u\n", LittleFS.usedBytes());
+  Serial.printf("Total: %u\n", LittleFS.totalBytes());
+
   // Initialize shared state after filesystem is mounted
   Shared_init();
 

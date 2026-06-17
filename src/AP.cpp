@@ -1,107 +1,31 @@
-#include "AP.h"
+﻿#include "AP.h"
 #include "Shared.h"
 #include <ESPAsyncWebServer.h>
+#include <ETH.h>
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_system.h>
 
 static AsyncWebServer server(80);
-static String gAuthSessionToken = "";
-static const char *AUTH_COOKIE_NAME = "RAMS_AUTH";
-static const char *AP_PASS_FIXED = "MSys@1234";
-static bool serverStarted = false;
-static bool serverRoutesSetup = false;
-static String gRequestBody;
-static String gRequestBodyRecipients;
+static bool          serverStarted     = false;
+static bool          serverRoutesSetup = false;
+static const char    *WEBUI_USER        = "Admin";
+static const char    *WEBUI_PASS        = "Admin@123";
+static const char    *AP_PASS_FIXED     = "MSys@1234";
+static const char    *AUTH_COOKIE_NAME  = "MSMSG_AUTH";
+static const char    *SERIAL_FILE_PATH  = "/serialnumber.txt";
+static const char    *SERIAL_META_PATH  = "/serial_meta.txt";
+// MB map CSV removed for RAMS; configuration will be handled via Web UI
+static String         gAuthSessionToken = "";
+#ifndef FW_BUILD_TAG
+#define FW_BUILD_TAG __DATE__ " " __TIME__
+#endif
+static const char *FW_BUILD_TAG_VALUE = FW_BUILD_TAG;
 
-static String htmlPage() {
-  return R"RAW(
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RAMS Dashboard</title>
-<link rel="icon" type="image/png" href="/logo.png?v=2">
-<style>
-  * { box-sizing: border-box; }
-  html,body { height: 100%; margin: 0; font-family: Arial, sans-serif; background: #f3f5f7; }
-  .app { display: flex; height: 100%; }
-  .sidebar { width: 220px; background: #0f1724; color: #fff; padding: 18px 12px; box-shadow: 2px 0 8px rgba(0,0,0,0.08); }
-  .brand { font-size: 18px; font-weight: 700; margin-bottom: 18px; color: #fff; }
-  .nav { display: block; }
-  .nav a { display: block; padding: 12px 14px; margin-bottom: 8px; color: #e6eefc; text-decoration: none; border-radius: 6px; font-weight: 600; }
-  .nav a:hover { background: rgba(255,255,255,0.04); color: #fff; }
-  .nav a.active { background: #1e40af; color: #fff; }
-  .nav .danger { background: #7f1d1d; }
-  .content { flex: 1; padding: 22px; overflow: auto; }
-  .card { background: #fff; border-radius: 10px; padding: 18px; box-shadow: 0 6px 20px rgba(15,23,42,0.06); max-width: 1100px; margin: 0 auto; }
-  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
-  .item { background:#f8fbff; border:1px solid #dce8f8; border-radius:8px; padding:12px }
-  .label { font-size:13px; color:#546179 }
-  .value { font-size:16px; font-weight:700; color:#1f2d3d }
-  @media(max-width:900px){ .sidebar { position: relative; width: 100%; display:flex; gap:12px; overflow-x: auto; } .app { flex-direction: column; } .grid { grid-template-columns:1fr } }
-</style>
-</head>
-<body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand">RAMS Configuration</div>
-    <nav class="nav">
-      <a href="/" class="active">Dashboard</a>
-      <a href="/digital-inputs">Digital Inputs</a>
-      <a href="/analog-inputs">Analog Inputs</a>
-      <a href="/relay-outputs">Relay Outputs</a>
-      <a href="/alarm-management">Alarm Management</a>
-      <a href="/phone-numbers">Phone Number Management</a>
-      <a href="/network-config">Network Configuration</a>
-      <a href="/event-logs">Event Logs</a>
-      <a href="/diagnostics">Diagnostics</a>
-      <a href="/logout" class="danger">Logout</a>
-    </nav>
-  </aside>
-
-  <main class="content">
-    <div class="card">
-      <h1 style="margin-top:0">Dashboard</h1>
-      <div class="section-title">System Summary</div>
-      <div id="dashboard" class="grid" style="margin-top:12px">
-        <div class="item"><div class="label">Serial Number</div><div id="dash-serial" class="value">Loading...</div></div>
-        <div class="item"><div class="label">AP IP</div><div id="dash-ap-ip" class="value">Loading...</div></div>
-        <div class="item"><div class="label">TCP Endpoint</div><div id="dash-tcp" class="value">Loading...</div></div>
-        <div class="item"><div class="label">Active Alarms</div><div id="dash-active" class="value">0</div></div>
-        <div class="item"><div class="label">Acknowledged</div><div id="dash-ack" class="value">0</div></div>
-        <div class="item"><div class="label">Unacknowledged</div><div id="dash-unack" class="value">0</div></div>
-        <div class="item"><div class="label">Authorized Numbers</div><div id="dash-auth" class="value">0</div></div>
-        <div class="item"><div class="label">Event Recipients</div><div id="dash-recip" class="value">0</div></div>
-      </div>
-    </div>
-  </main>
-</div>
-
-<script>
-function setEl(id, v){ var e = document.getElementById(id); if (e) e.textContent = v; }
-fetch('/api/dashboard').then(r=>r.json()).then(d=>{
-  setEl('dash-serial', d.serial_number || 'Not Set');
-  setEl('dash-ap-ip', d.ap_ip || '-');
-  setEl('dash-tcp', d.tcp_endpoint || '-');
-  setEl('dash-active', String(d.active_alarms || 0));
-  setEl('dash-ack', String(d.acknowledged_alarms || 0));
-  setEl('dash-unack', String(d.unacknowledged_alarms || 0));
-  setEl('dash-auth', String(d.authorized_numbers || 0));
-  setEl('dash-recip', String(d.event_recipients || 0));
-}).catch(e=>console.log('dashboard load failed', e));
-
-// Highlight active nav link
-(function(){
-  var links = document.querySelectorAll('.nav a');
-  links.forEach(function(a){ a.classList.remove('active'); if (a.getAttribute('href') === window.location.pathname) a.classList.add('active'); });
-})();
-</script>
-</body>
-</html>
-)RAW";
-}
+static String htmlPage();
+static void setupWebServerRoutes();
+static void startAPMode();
+static void stopAPMode();
 
 static String makeSessionToken() {
   char buf[33] = {};
@@ -110,12 +34,12 @@ static String makeSessionToken() {
   uint32_t c = esp_random();
   uint32_t d = esp_random();
   snprintf(buf, sizeof(buf), "%08lx%08lx%08lx%08lx",
-           (unsigned long)a, (unsigned long)b, (unsigned long)c, (unsigned long)d);
+           (unsigned long)a,
+           (unsigned long)b,
+           (unsigned long)c,
+           (unsigned long)d);
   return String(buf);
 }
-
-static String getLoginUsername() { return String("Admin"); }
-static String getLoginPassword() { return String("Admin@123"); }
 
 static String readCookieValue(const String &cookieHeader, const String &name) {
   int start = 0;
@@ -124,11 +48,13 @@ static String readCookieValue(const String &cookieHeader, const String &name) {
     if (sep < 0) sep = cookieHeader.length();
     String pair = cookieHeader.substring(start, sep);
     pair.trim();
+
     int eq = pair.indexOf('=');
     if (eq > 0) {
       String key = pair.substring(0, eq);
       String val = pair.substring(eq + 1);
-      key.trim(); val.trim();
+      key.trim();
+      val.trim();
       if (key == name) return val;
     }
     start = sep + 1;
@@ -160,14 +86,14 @@ static void clearAuthCookie(AsyncWebServerRequest *request) {
 
 static String loginPage(const String &prefilledUser, bool badCredentials = false) {
   String err = badCredentials ? "<div class='err'>Invalid ID or password.</div>" : "";
-  String page = R"LOG(
+  String page = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login</title>
-<link rel="icon" type="image/png" href="/logo.png?v=2">
+<link rel="icon" type="image/png" href="/Gaurangalogo.png?v=2">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f7; font-family: Arial, sans-serif; }
@@ -185,9 +111,17 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
     line-height: 1; padding: 0; color: #444;
   }
   .eye-btn .eye-icon { position: relative; display: inline-block; }
-  .eye-btn .eye-icon svg { width: 20px; height: 20px; display: block; }
-  .eye-btn .eye-icon .slash { opacity: 0; transition: opacity 0.12s ease; }
-  .eye-btn.eye-off .eye-icon .slash { opacity: 1; }
+  .eye-btn.eye-off .eye-icon::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 50%;
+    height: 2px;
+    background: currentColor;
+    transform: rotate(-35deg);
+    transform-origin: center;
+  }
   button { width: 100%; margin-top: 16px; padding: 10px 12px; border: 0; border-radius: 8px; background: #1565c0; color: #fff; font-weight: 600; cursor: pointer; }
   button:hover { opacity: 0.9; }
   .pass-wrap .eye-btn {
@@ -203,22 +137,14 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
 </head>
 <body>
   <form class="panel" method="POST" action="/login" autocomplete="off">
-    <h1>RAMS Login</h1>
+    <h1>MB Map Config Login</h1>
     __ERROR_BLOCK__
     <label for="user">ID</label>
     <input id="user" name="user" type="text" value="__PREFILLED_USER__" readonly required>
     <label for="pass">Password</label>
     <div class="pass-wrap">
       <input id="pass" name="pass" type="password" required>
-      <button class="eye-btn eye-off" type="button" id="togglePass" aria-label="Show password">
-        <span class="eye-icon">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.5" />
-            <circle cx="12" cy="12" r="3" fill="currentColor" />
-            <path class="slash" d="M3 3l18 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-          </svg>
-        </span>
-      </button>
+      <button class="eye-btn eye-off" type="button" id="togglePass" aria-label="Show password"><span class="eye-icon">&#128065;</span></button>
     </div>
     <button type="submit">Login</button>
   </form>
@@ -238,7 +164,7 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
 </script>
 </body>
 </html>
-)LOG";
+)rawliteral";
   page.replace("__ERROR_BLOCK__", err);
   page.replace("__PREFILLED_USER__", prefilledUser);
   return page;
@@ -247,6 +173,7 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
 static String readSerialNumber() {
   String serial = "";
   if (!Shared_lockFileSystem()) return serial;
+
   if (LittleFS.exists(SERIAL_FILE_PATH)) {
     File f = LittleFS.open(SERIAL_FILE_PATH, "r");
     if (f) {
@@ -255,15 +182,97 @@ static String readSerialNumber() {
       f.close();
     }
   }
+
   Shared_unlockFileSystem();
   return serial;
 }
 
+static String getAPSSID() {
+  String serial = readSerialNumber();
+  serial.trim();
+  if (serial.length() == 0) return "MSys";
+  return "MSys-" + serial;
+}
+
+static String readSerialMeta() {
+  String meta = "";
+  if (!Shared_lockFileSystem()) return meta;
+  if (LittleFS.exists(SERIAL_META_PATH)) {
+    File f = LittleFS.open(SERIAL_META_PATH, "r");
+    if (f) {
+      meta = f.readStringUntil('\n');
+      meta.trim();
+      f.close();
+    }
+  }
+  Shared_unlockFileSystem();
+  return meta;
+}
+
+static void clearStaleSerialForNewBuild() {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(2000))) {
+    Serial.println("[SERIAL] File system busy, skipping stale serial cleanup");
+    return;
+  }
+
+  String serial = "";
+  String meta = "";
+
+  if (LittleFS.exists(SERIAL_FILE_PATH)) {
+    File sf = LittleFS.open(SERIAL_FILE_PATH, "r");
+    if (sf) {
+      serial = sf.readStringUntil('\n');
+      serial.trim();
+      sf.close();
+    }
+  }
+
+  if (LittleFS.exists(SERIAL_META_PATH)) {
+    File mf = LittleFS.open(SERIAL_META_PATH, "r");
+    if (mf) {
+      meta = mf.readStringUntil('\n');
+      meta.trim();
+      mf.close();
+    }
+  }
+
+  bool hasPreviousSerial = (serial.length() > 0);
+  bool isCurrentBuildMeta = (meta == String(FW_BUILD_TAG_VALUE));
+
+  if (hasPreviousSerial && !isCurrentBuildMeta) {
+    LittleFS.remove(SERIAL_FILE_PATH);
+    LittleFS.remove(SERIAL_META_PATH);
+    Serial.println("[SERIAL] Cleared stale serial for new firmware build");
+  }
+
+  Shared_unlockFileSystem();
+}
+
+static String getLoginUsername() {
+  return String(WEBUI_USER);
+}
+
+static String getLoginPassword() {
+  return String(WEBUI_PASS);
+}
+
+static bool isSerialLockedForCurrentBuild() {
+  String serial = readSerialNumber();
+  if (serial.length() == 0) return false;
+  String meta = readSerialMeta();
+  return meta == String(FW_BUILD_TAG_VALUE);
+}
+
 static bool isSerialFormatValid(const String &serial) {
   if (serial.length() < 3 || serial.length() > 32) return false;
+
   for (size_t i = 0; i < serial.length(); ++i) {
     char c = serial.charAt(i);
-    bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    bool ok =
+      (c >= 'A' && c <= 'Z') ||
+      (c >= 'a' && c <= 'z') ||
+      (c >= '0' && c <= '9') ||
+      c == '_' || c == '-';
     if (!ok) return false;
   }
   return true;
@@ -275,6 +284,7 @@ static bool writeSerialNumberOnce(const String &serial, String &error) {
     return false;
   }
 
+  bool lockedForThisBuild = false;
   if (LittleFS.exists(SERIAL_FILE_PATH)) {
     File existing = LittleFS.open(SERIAL_FILE_PATH, "r");
     if (existing) {
@@ -282,8 +292,20 @@ static bool writeSerialNumberOnce(const String &serial, String &error) {
       current.trim();
       existing.close();
       if (current.length() > 0) {
+        String meta = "";
+        if (LittleFS.exists(SERIAL_META_PATH)) {
+          File m = LittleFS.open(SERIAL_META_PATH, "r");
+          if (m) {
+            meta = m.readStringUntil('\n');
+            meta.trim();
+            m.close();
+          }
+        }
+        lockedForThisBuild = (meta == String(FW_BUILD_TAG_VALUE));
+      }
+      if (current.length() > 0 && lockedForThisBuild) {
         Shared_unlockFileSystem();
-        error = "Serial number already set";
+        error = "Serial number already set and locked for this firmware build";
         return false;
       }
     }
@@ -297,6 +319,16 @@ static bool writeSerialNumberOnce(const String &serial, String &error) {
   }
   out.println(serial);
   out.close();
+
+  File meta = LittleFS.open(SERIAL_META_PATH, "w");
+  if (!meta) {
+    Shared_unlockFileSystem();
+    error = "Serial saved but failed to lock metadata";
+    return false;
+  }
+  meta.println(FW_BUILD_TAG_VALUE);
+  meta.close();
+
   Shared_unlockFileSystem();
   return true;
 }
@@ -308,31 +340,40 @@ static String serialNumberPage(const String &currentSerial, const String &messag
   }
 
   String formBlock = "";
-  if (currentSerial.length() > 0) {
+  if (currentSerial.length() > 0 && isSerialLockedForCurrentBuild()) {
     formBlock = "<div class='locked'>Serial Number is <strong>" + currentSerial + "</strong></div>";
-  } else {
-    formBlock = R"SER(
+  } else if (currentSerial.length() > 0) {
+    formBlock = "<div class='status ok'>Previous serial found: <strong>" + currentSerial + "</strong>. You can overwrite it once for this new firmware upload.</div>" + String(R"rawliteral(
       <form method="POST" action="/serialnumber/">
         <label for="serial">Serial Number</label>
-        <input id="serial" name="serial" type="text" placeholder="e.g. RAMS001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
+        <input id="serial" name="serial" type="text" required maxlength="32" pattern="[A-Za-z0-9_-]+">
+        <button type="submit">Save Serial Number</button>
+      </form>
+    )rawliteral");
+  } else {  
+    formBlock = R"rawliteral(
+      <form method="POST" action="/serialnumber/">
+        <label for="serial">Serial Number</label>
+        <input id="serial" name="serial" type="text" placeholder="e.g. OMS0001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
         <button type="submit">Set Serial Number</button>
       </form>
-    )SER";
+    )rawliteral";
   }
 
-  String page = R"SERIAL(
+  String page = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Device Serial Number</title>
-<link rel="icon" type="image/png" href="/logo.png?v=2">
+<link rel="icon" type="image/png" href="/Gaurangalogo.png?v=2">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f7; font-family: Arial, sans-serif; padding: 14px; }
   .panel { width: min(460px, 96vw); background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 24px; }
   h1 { margin: 0 0 14px; font-size: 20px; color: #1a1a2e; }
+  p { margin: 0 0 12px; color: #555; font-size: 14px; }
   label { display: block; font-size: 13px; color: #444; margin: 10px 0 6px; }
   input { width: 100%; padding: 10px 12px; border: 1px solid #d9dce2; border-radius: 8px; font-size: 14px; }
   button { margin-top: 14px; padding: 10px 14px; border: 0; border-radius: 8px; background: #1565c0; color: #fff; font-weight: 600; cursor: pointer; }
@@ -351,249 +392,172 @@ static String serialNumberPage(const String &currentSerial, const String &messag
     __STATUS_BLOCK__
     __FORM_BLOCK__
     <div class="links">
-      <a href="/">Back to Dashboard</a>
+      <a href="/">Back to Config</a>
       <a href="/logout">Logout</a>
     </div>
   </div>
 </body>
 </html>
-)SERIAL";
+)rawliteral";
+
   page.replace("__STATUS_BLOCK__", status);
   page.replace("__FORM_BLOCK__", formBlock);
   return page;
 }
 
-static String digitalInputsPage() {
-  return R"DIg(
-<!doctype html>
+static String ipBytesToString(const uint8_t ip[4]) {
+  return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
+}
+
+static bool parseIPFromText(const String &src, uint8_t out[4]) {
+  int parts[4] = {0, 0, 0, 0};
+  int p = 0;
+  String token = "";
+  for (size_t i = 0; i < src.length(); ++i) {
+    char c = src.charAt(i);
+    if (c == '.') {
+      if (p > 2 || token.length() == 0) return false;
+      parts[p++] = token.toInt();
+      token = "";
+      continue;
+    }
+    if (c < '0' || c > '9') return false;
+    token += c;
+  }
+  if (p != 3 || token.length() == 0) return false;
+  parts[3] = token.toInt();
+  for (int i = 0; i < 4; ++i) {
+    if (parts[i] < 0 || parts[i] > 255) return false;
+    out[i] = (uint8_t)parts[i];
+  }
+  return true;
+}
+
+static String gatewaySettingsPage() {
+  return R"rawliteral(
+<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Digital Inputs</title>
-<link rel="icon" type="image/png" href="/logo.png?v=2">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gateway Settings</title>
+<link rel="icon" type="image/png" href="/Gaurangalogo.png?v=2">
 <style>
-body{font-family:Arial, sans-serif; margin:16px; background:#f3f5f7}
-.panel{max-width:900px;margin:0 auto;background:#fff;padding:20px;border-radius:10px;box-shadow:0 6px 20px rgba(15,23,42,0.06)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-.field{margin-bottom:12px;display:block}
-.field label{display:block;font-size:13px;color:#384047;margin-bottom:6px}
-.field input[type=text],.field select,.field input[type=number],.field textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d7dee8;border-radius:6px;font-size:14px}
-.field textarea{min-height:64px;resize:vertical}
-#formArea{overflow:auto}
-.btn{display:inline-block;padding:10px 14px;border-radius:8px;border:0;background:#1565c0;color:#fff;font-weight:700;cursor:pointer}
-.muted{background:#e9eef7;color:#247}
-.small{font-size:13px;color:#5b6b78}
-@media(max-width:700px){.grid{grid-template-columns:1fr}.panel{padding:14px}}
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;background:#f3f5f7;margin:0;padding:12px}
+  .card{max-width:860px;margin:auto;background:#fff;border-radius:10px;padding:16px;box-shadow:0 8px 26px rgba(0,0,0,.08)}
+  h1{margin:0 0 12px;font-size:20px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .grid>div{min-width:0}
+  label{display:block;font-size:13px;color:#333;margin-bottom:6px}
+  input,select{width:100%;max-width:100%;padding:8px;border:1px solid #cfd8dc;border-radius:7px}
+  .full{grid-column:1/-1}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{padding:10px 14px;border:0;border-radius:8px;background:#1565c0;color:#fff;font-weight:600;cursor:pointer}
+  .muted{font-size:12px;color:#666}
+  .status{margin:10px 0;padding:10px;border-radius:8px;display:none}
+  .ok{display:block;background:#e8f5e9;color:#2e7d32}
+  .err{display:block;background:#ffebee;color:#c62828}
+  @media (max-width:640px){
+    body{padding:10px}
+    .card{padding:12px}
+    h1{font-size:18px}
+    .grid{grid-template-columns:1fr;gap:10px}
+    .btn{width:100%}
+  }
 </style>
 </head>
 <body>
-<div class="panel">
-  <h2>Digital Inputs Configuration</h2>
-  <p class="small">Select input number, configure settings and save. Contacts are loaded from Phone Number Management.</p>
-
-  <div class="field"><label>Digital Input No.</label>
-    <select id="diSelect"><option value="0">DI1</option><option value="1">DI2</option><option value="2">DI3</option><option value="3">DI4</option></select>
-  </div>
-
-  <div id="formArea">
-    <div class="grid">
-      <div>
-        <div class="field"><label>Enable</label><input type="checkbox" id="di-enabled"></div>
-        <div class="field"><label>Input Name</label><input type="text" id="di-name"></div>
-        <div class="field"><label>Input Type</label><select id="di-type"><option value="NO">Normally Open</option><option value="NC">Normally Closed</option></select></div>
-        <div class="field"><label>Contact (recipient)</label><select id="di-contact"><option value="">-- none --</option></select></div>
-      </div>
-      <div>
-        <div class="field"><label>Time To Alarm (seconds)</label><input type="number" id="di-tta" min="0"></div>
-        <div class="field"><label>Time To Return (seconds)</label><input type="number" id="di-ttr" min="0"></div>
-        <div class="field"><label><input type="checkbox" id="di-alarmSms"> Alarm SMS Notification</label></div>
-        <div class="field"><label><input type="checkbox" id="di-returnSms"> Return SMS Notification</label></div>
-      </div>
+<div class="card">
+  <h1>Gateway Configuration</h1>
+  <div id="status" class="status"></div>
+  <div class="grid">
+    <div class="full row">
+      <input id="useDhcp" type="checkbox" style="width:auto">
+      <label for="useDhcp" style="margin:0">Use DHCP for Ethernet</label>
     </div>
-
-    <div class="field"><label>Alarm Message</label><textarea id="di-alarmMsg" rows="2"></textarea></div>
-    <div class="field"><label>Return Message</label><textarea id="di-returnMsg" rows="2"></textarea></div>
+    <div><label>Static IP</label><input id="staticIp" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
+    <div><label>Subnet Mask</label><input id="subnetMask" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
+    <div><label>Gateway IP</label><input id="gatewayIp" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
+    <div><label>HTTP Port</label><input id="tcpPort" type="number" min="1" max="65535" inputmode="numeric" oninput="sanitizeNumberInput(this)"></div>
   </div>
-
-  <div style="margin-top:12px">
-    <button id="saveBtn" class="btn">Save Input</button>
-    <button id="resetBtn" class="btn muted" style="margin-left:8px">Reset Selected</button>
-    <a href="/" style="margin-left:12px">Back to Dashboard</a>
+  <div class="row" style="margin-top:14px">
+    <button class="btn" onclick="saveCfg()">Save Settings</button>
+    <a href="/" class="muted">Back to Dashboard</a>
   </div>
-
-  <div id="status" style="margin-top:12px"></div>
+  <p class="muted">After save, reboot device to apply network settings.</p>
 </div>
-
 <script>
-let recipients = [];
-let cfgArr = [];
-let currentIndex = 0;
-
-async function loadRecipients(){
-  try { const res = await fetch('/api/recipients'); if (!res.ok) return []; return await res.json(); } catch(e){ return []; }
+function status(msg, ok){var s=document.getElementById('status');s.textContent=msg;s.className='status '+(ok?'ok':'err');}
+function sanitizeIpInput(el){
+  if(!el) return;
+  var cleaned = el.value.replace(/[^0-9.]/g, '');
+  var parts = cleaned.split('.');
+  if (parts.length > 4) parts = parts.slice(0, 4);
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i].length > 3) parts[i] = parts[i].slice(0, 3);
+  }
+  el.value = parts.join('.');
 }
-
-function defaultForIndex(i){
-  return { enabled:false, name: 'DI'+(i+1), type:'NO', tta:5, ttr:3, alarmSms:false, returnSms:false, alarmMessage:'Alarm on DI'+(i+1), returnMessage:'Return on DI'+(i+1), contactId: '' };
+function sanitizeNumberInput(el){ if(!el) return; el.value = el.value.replace(/[^0-9]/g, ''); if(el.value==='') return; var v=parseInt(el.value,10); if(!Number.isFinite(v)) return; if(v<1) v=1; if(v>65535) v=65535; el.value=String(v); }
+function loadCfg(){
+  fetch('/api/gateway-settings').then(r=>r.json()).then(c=>{
+    document.getElementById('useDhcp').checked=!!c.use_dhcp;
+    document.getElementById('staticIp').value=c.static_ip||'';
+    document.getElementById('subnetMask').value=c.subnet_mask||'';
+    document.getElementById('gatewayIp').value=c.gateway_ip||'';
+    document.getElementById('tcpPort').value=c.tcp_port;
+  }).catch(e=>status('Load failed: '+e.message,false));
 }
-
-async function loadConfig(){
-  try { const r = await fetch('/api/digital-inputs'); if (r.ok) cfgArr = await r.json(); else cfgArr = []; } catch(e){ cfgArr = []; }
-  // ensure length 4
-  for(let i=0;i<4;i++) if (!cfgArr[i]) cfgArr[i] = defaultForIndex(i);
+function saveCfg(){
+  var p=new URLSearchParams();
+  p.append('use_dhcp',document.getElementById('useDhcp').checked?'1':'0');
+  p.append('static_ip',document.getElementById('staticIp').value.trim());
+  p.append('subnet_mask',document.getElementById('subnetMask').value.trim());
+  p.append('gateway_ip',document.getElementById('gatewayIp').value.trim());
+  p.append('tcp_port',document.getElementById('tcpPort').value);
+  fetch('/api/gateway-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()})
+    .then(r=>r.json()).then(d=>{ if(d.success) status('Saved. Reboot to apply.',true); else status(d.error||'Save failed',false); })
+    .catch(e=>status('Save failed: '+e.message,false));
 }
-
-function populateRecipientsSelect(){
-  const sel = document.getElementById('di-contact'); sel.innerHTML = '<option value="">-- none --</option>';
-  recipients.forEach(r=>{ const opt = document.createElement('option'); opt.value = r.id || r.phone || r.name; opt.textContent = (r.name? (r.name + ' - ' + (r.phone||'')) : (r.phone||r.id)); sel.appendChild(opt); });
-}
-
-function renderForIndex(i){
-  currentIndex = i;
-  const cfg = cfgArr[i] || defaultForIndex(i);
-  document.getElementById('di-enabled').checked = !!cfg.enabled;
-  document.getElementById('di-name').value = cfg.name || '';
-  document.getElementById('di-type').value = cfg.type || 'NO';
-  document.getElementById('di-tta').value = cfg.tta || 0;
-  document.getElementById('di-ttr').value = cfg.ttr || 0;
-  document.getElementById('di-alarmSms').checked = !!cfg.alarmSms;
-  document.getElementById('di-returnSms').checked = !!cfg.returnSms;
-  document.getElementById('di-alarmMsg').value = cfg.alarmMessage || '';
-  document.getElementById('di-returnMsg').value = cfg.returnMessage || '';
-  document.getElementById('di-contact').value = cfg.contactId || '';
-  document.getElementById('status').textContent = '';
-}
-
-function collectSingle(){
-  return {
-    enabled: !!document.getElementById('di-enabled').checked,
-    name: document.getElementById('di-name').value || ('DI'+(currentIndex+1)),
-    type: document.getElementById('di-type').value || 'NO',
-    tta: parseInt(document.getElementById('di-tta').value) || 0,
-    ttr: parseInt(document.getElementById('di-ttr').value) || 0,
-    alarmSms: !!document.getElementById('di-alarmSms').checked,
-    returnSms: !!document.getElementById('di-returnSms').checked,
-    alarmMessage: document.getElementById('di-alarmMsg').value || '',
-    returnMessage: document.getElementById('di-returnMsg').value || '',
-    contactId: document.getElementById('di-contact').value || ''
-  };
-}
-
-document.getElementById('diSelect').addEventListener('change', function(e){ renderForIndex(parseInt(e.target.value)); });
-
-document.getElementById('saveBtn').addEventListener('click', async function(){
-  const obj = collectSingle(); cfgArr[currentIndex] = obj;
-  document.getElementById('status').textContent = 'Saving...';
-  try {
-    const res = await fetch('/api/digital-inputs', { method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfgArr) });
-    if (res.ok) document.getElementById('status').textContent = 'Saved.';
-    else document.getElementById('status').textContent = 'Save failed';
-  } catch(e){ document.getElementById('status').textContent = 'Save error'; }
-});
-
-document.getElementById('resetBtn').addEventListener('click', function(){
-  if (!confirm('Reset selected input to defaults?')) return; cfgArr[currentIndex] = defaultForIndex(currentIndex); renderForIndex(currentIndex); document.getElementById('status').textContent = 'Reset to defaults (not saved).';
-});
-
-async function init(){ recipients = await loadRecipients(); await loadConfig(); populateRecipientsSelect(); renderForIndex(0); }
-init();
+loadCfg();
 </script>
 </body>
 </html>
-)DIg";
- }
-
-static String phoneNumbersPage() {
-  return R"PHN(
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Phone Number Management</title>
-<link rel="icon" type="image/png" href="/logo.png?v=2">
-<style>
-body{font-family:Arial, sans-serif; margin:16px; background:#f3f5f7}
-.panel{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(15,23,42,0.06)}
-.list{border:1px solid #e6eef8;padding:12px;border-radius:8px;background:#fbfeff}
-.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-.row input{flex:1;padding:8px;border:1px solid #d7dee8;border-radius:6px}
-.btn{padding:8px 12px;border-radius:8px;border:0;background:#1565c0;color:#fff;cursor:pointer}
-.muted{background:#e9eef7;color:#247}
-.small{font-size:13px;color:#5b6b78}
-</style>
-</head>
-<body>
-<div class="panel">
-  <h2>Phone Number Management</h2>
-  <p class="small">Add contact name and phone. These appear in Digital Input contact dropdowns.</p>
-  <div id="list" class="list"></div>
-  <div style="margin-top:12px">
-    <button id="addBtn" class="btn">Add Contact</button>
-    <button id="saveBtn" class="btn" style="margin-left:8px">Save All</button>
-    <a href="/" style="margin-left:12px">Back to Dashboard</a>
-  </div>
-  <div id="status" style="margin-top:12px"></div>
-</div>
-<script>
-let items = [];
-function elt(tag, props, ...children){ const e=document.createElement(tag); if(props) Object.keys(props).forEach(k=>e[k]=props[k]); children.forEach(c=>{ if(typeof c==='string') e.appendChild(document.createTextNode(c)); else e.appendChild(c); }); return e; }
-
-function renderList(){
-  const list = document.getElementById('list'); list.innerHTML='';
-  items.forEach((it, idx)=>{
-    const row = elt('div',{className:'row'});
-    const name = elt('input',{value:it.name || '', placeholder:'Name'});
-    const phone = elt('input',{value:it.phone || '', placeholder:'Phone'});
-    const del = elt('button',{className:'btn muted'}, 'Delete');
-    del.addEventListener('click', ()=>{ if(confirm('Delete contact?')){ items.splice(idx,1); renderList(); } });
-    name.addEventListener('input', ()=> items[idx].name = name.value);
-    phone.addEventListener('input', ()=> items[idx].phone = phone.value);
-    row.appendChild(name); row.appendChild(phone); row.appendChild(del);
-    list.appendChild(row);
-  });
+)rawliteral";
 }
 
-document.getElementById('addBtn').addEventListener('click', ()=>{ items.push({name:'',phone:''}); renderList(); });
 
-document.getElementById('saveBtn').addEventListener('click', async ()=>{
-  document.getElementById('status').textContent = 'Saving...';
-  try{
-    const res = await fetch('/api/recipients', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(items) });
-    if(res.ok) document.getElementById('status').textContent = 'Saved.'; else document.getElementById('status').textContent = 'Save failed';
-  }catch(e){ document.getElementById('status').textContent = 'Save error'; }
-});
 
-async function load(){
-  try{ const r = await fetch('/api/recipients'); if(r.ok) items = await r.json(); else items = []; }catch(e){ items = []; }
-  if(!Array.isArray(items)) items = [];
-  renderList();
+void printAPStatus() {
+  Serial.println("");
+  Serial.println("=== AP Mode Info ===");
+  Serial.println("To enable AP Mode: Press and hold button on GPIO 33");
+  Serial.println("AP status LED: ON when AP mode is active");
+  Serial.println("AP SSID: MSys or MSys-<SerialNumber>");
+  Serial.println("AP Password: MSys@1234");
+  Serial.println("AP URL: http://10.10.10.10");
+  Serial.println("Note: AP mode not active by default");
 }
-load();
-</script>
-</body>
-</html>
-)PHN";
-}
+
+// ---------------------------------------------------------------------------
+// Build a JSON array of all loaded message configs for the table view.
+// Format: [{"no":1,"phones":["081...","","","",""],"text":"ALARM..."},...]
+// ---------------------------------------------------------------------------
+// Message CSV/table support removed for RAMS firmware
 
 static void setupWebServerRoutes() {
   if (serverRoutesSetup) return;
 
-  // Serve project logo from LittleFS. Put your logo at the project 'data' folder as `logo.png` and upload to LittleFS.
-  server.on("/logo.png", HTTP_GET, [](AsyncWebServerRequest *request) {
-    // prefer Gaurangalogo.png if present in LittleFS
-    if (LittleFS.exists("/Gaurangalogo.png")) request->send(LittleFS, "/Gaurangalogo.png", "image/png");
-    else request->send(LittleFS, "/logo.png", "image/png");
-  });
-  // Also serve as favicon for browsers (some browsers request /favicon.ico)
-  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/Gaurangalogo.png")) request->send(LittleFS, "/Gaurangalogo.png", "image/png");
-    else request->send(LittleFS, "/logo.png", "image/png");
+  server.on("/Gaurangalogo.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/Gaurangalogo.png", "image/png");
   });
 
   server.on("/login", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (isAuthenticated(request)) { sendRedirect(request, "/"); return; }
+    if (isAuthenticated(request)) {
+      sendRedirect(request, "/");
+      return;
+    }
     bool bad = request->hasParam("err");
     request->send(200, "text/html", loginPage(getLoginUsername(), bad));
   });
@@ -603,194 +567,193 @@ static void setupWebServerRoutes() {
     String pass = request->hasParam("pass", true) ? request->getParam("pass", true)->value() : "";
     String expectedUser = getLoginUsername();
     String expectedPass = getLoginPassword();
+
     if (user == expectedUser && pass == expectedPass) {
       gAuthSessionToken = makeSessionToken();
       AsyncWebServerResponse *res = request->beginResponse(302);
       res->addHeader("Location", "/");
-      res->addHeader("Set-Cookie", String(AUTH_COOKIE_NAME) + "=" + gAuthSessionToken + "; Path=/; Max-Age=86400; HttpOnly; SameSite=Strict");
+      res->addHeader("Set-Cookie",
+                     String(AUTH_COOKIE_NAME) + "=" + gAuthSessionToken +
+                     "; Path=/; Max-Age=86400; HttpOnly; SameSite=Strict");
       request->send(res);
       return;
     }
+
     sendRedirect(request, "/login?err=1");
   });
 
-  server.on("/logout", HTTP_GET, [](AsyncWebServerRequest *request) { clearAuthCookie(request); });
+  server.on("/logout", HTTP_GET, [](AsyncWebServerRequest *request) {
+    clearAuthCookie(request);
+  });
 
   server.on("/serialnumber", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
+    if (!isAuthenticated(request)) {
+      sendRedirect(request, "/login");
+      return;
+    }
+    String serial = readSerialNumber();
+    request->send(200, "text/html", serialNumberPage(serial, "", true));
+  });
+
+  server.on("/serialnumber/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      sendRedirect(request, "/login");
+      return;
+    }
     String serial = readSerialNumber();
     request->send(200, "text/html", serialNumberPage(serial, "", true));
   });
 
   server.on("/serialnumber/", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { request->send(401, "text/plain", "Unauthorized"); return; }
-    String serial = request->hasParam("serial", true) ? request->getParam("serial", true)->value() : "";
-    serial.trim();
-    if (!isSerialFormatValid(serial)) {
-      String current = readSerialNumber();
-      request->send(400, "text/html", serialNumberPage(current, "Invalid serial format.", false));
+    if (!isAuthenticated(request)) {
+      request->send(401, "text/plain", "Unauthorized");
       return;
     }
-    String error="";
+
+    String serial = request->hasParam("serial", true) ? request->getParam("serial", true)->value() : "";
+    serial.trim();
+
+    if (!isSerialFormatValid(serial)) {
+      String current = readSerialNumber();
+      request->send(400, "text/html", serialNumberPage(current, "Invalid serial format. Use only A-Z, a-z, 0-9, _ or - (3-32 chars).", false));
+      return;
+    }
+
+    String error = "";
     if (!writeSerialNumberOnce(serial, error)) {
       String current = readSerialNumber();
       request->send(409, "text/html", serialNumberPage(current, error, false));
       return;
     }
+
     String current = readSerialNumber();
-    request->send(200, "text/html", serialNumberPage(current, "Serial saved.", true));
+    String msg = "Serial number saved and locked successfully.";
+    request->send(200, "text/html", serialNumberPage(current, msg, true));
   });
 
-  // Dashboard API
-  server.on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
-    String serial = readSerialNumber(); if (serial.length()==0) serial = "Not Set";
-    String apIp = WiFi.softAPIP().toString(); if (apIp=="0.0.0.0") apIp = "AP Mode Off (10.10.10.10 when enabled)";
+  server.on("/gateway-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      sendRedirect(request, "/login");
+      return;
+    }
+    request->send(200, "text/html", gatewaySettingsPage());
+  });
+
+  server.on("/gateway-config/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      sendRedirect(request, "/login");
+      return;
+    }
+    request->send(200, "text/html", gatewaySettingsPage());
+  });
+
+  server.on("/api/gateway-settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    GatewaySettings s = {};
+    if (!Shared_getGatewaySettings(s)) {
+      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
+      return;
+    }
     String body = "{";
-    body += "\"serial_number\":\"" + serial + "\",";
-    body += "\"ap_ip\":\"" + apIp + "\",";
-    body += "\"tcp_endpoint\":\"-\",";
-    body += "\"active_alarms\":0,";
-    body += "\"acknowledged_alarms\":0,";
-    body += "\"unacknowledged_alarms\":0,";
-    body += "\"authorized_numbers\":0,";
-    body += "\"event_recipients\":0";
+    body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
+    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
+    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
+    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
+    body += "\"tcp_port\":" + String(s.tcpPort) + ",";
+    body += "\"baud_rate\":" + String((unsigned long)s.baudRate) + ",";
+    body += "\"data_bits\":" + String(s.dataBits) + ",";
+    body += "\"parity\":\"" + String(s.parity) + "\",";
+    body += "\"stop_bits\":" + String(s.stopBits);
     body += "}";
     request->send(200, "application/json", body);
   });
 
-  // Return list of saved recipients (phone numbers)
-  server.on("/api/recipients", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
-    String out = "[]";
-    if (Shared_lockFileSystem()) {
-      if (LittleFS.exists("/recipients.json")) {
-        File f = LittleFS.open("/recipients.json", "r");
-        if (f) { out = f.readString(); f.close(); }
-      }
-      Shared_unlockFileSystem();
+  server.on("/api/gateway-settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
     }
-    request->send(200, "application/json", out);
+
+    auto val = [&](const char *k) -> String {
+      return request->hasParam(k, true) ? request->getParam(k, true)->value() : "";
+    };
+    GatewaySettings s = {};
+    Shared_getGatewaySettings(s);
+
+    s.useDhcp = (val("use_dhcp") == "1");
+    String tcpPortText = val("tcp_port");
+    if (tcpPortText.startsWith("-")) {
+      request->send(400, "application/json", "{\"error\":\"Negative values are not allowed\"}");
+      return;
+    }
+    long tcpPortLong = tcpPortText.toInt();
+    if (tcpPortLong < 1 || tcpPortLong > 65535) {
+      request->send(400, "application/json", "{\"error\":\"TCP Port must be 1-65535\"}");
+      return;
+    }
+    s.tcpPort = (uint16_t)tcpPortLong;
+
+    if (!parseIPFromText(val("static_ip"), s.staticIp) ||
+        !parseIPFromText(val("subnet_mask"), s.subnetMask) ||
+        !parseIPFromText(val("gateway_ip"), s.gatewayIp)) {
+      request->send(400, "application/json", "{\"error\":\"Invalid IP format\"}");
+      return;
+    }
+
+    if (!Shared_saveGatewaySettings(s)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+    request->send(200, "application/json", "{\"success\":true}");
   });
 
-  // Save recipients (replace entire list)
-  server.on("/api/recipients", HTTP_POST, [](AsyncWebServerRequest *request){
-    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); gRequestBodyRecipients.clear(); return; }
-    if (gRequestBodyRecipients.length() == 0) { request->send(400, "application/json", "{\"error\":\"Empty body\"}"); return; }
-    bool ok = false;
-    if (Shared_lockFileSystem()) {
-      File f = LittleFS.open("/recipients.json", "w");
-      if (f) { f.print(gRequestBodyRecipients); f.close(); ok = true; }
-      Shared_unlockFileSystem();
+  server.on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
     }
-    gRequestBodyRecipients.clear();
-    if (ok) request->send(200, "application/json", "{\"status\":\"ok\"}");
-    else request->send(500, "application/json", "{\"error\":\"Failed to save\"}");
-  }, nullptr, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-    if (index == 0) gRequestBodyRecipients = "";
-    gRequestBodyRecipients.concat((const char*)data, len);
+
+    GatewaySettings s = {};
+    if (!Shared_getGatewaySettings(s)) {
+      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
+      return;
+    }
+
+    String serial = readSerialNumber();
+    if (serial.length() == 0) serial = "Not Set";
+    String apIp = WiFi.softAPIP().toString();
+    if (apIp == "0.0.0.0") apIp = "AP Mode Off (10.10.10.10 when enabled)";
+    String ethIp = ETH.localIP().toString();
+    if (ethIp == "0.0.0.0") {
+      ethIp = ipBytesToString(s.staticIp);
+    }
+
+    String body = "{";
+    body += "\"serial_number\":\"" + serial + "\",";
+    body += "\"login_user\":\"" + getLoginUsername() + "\",";
+    body += "\"ap_ip\":\"" + apIp + "\",";
+    body += "\"eth_ip\":\"" + ethIp + "\",";
+    body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
+    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
+    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
+    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
+    body += "\"tcp_port\":" + String(s.tcpPort);
+    body += "}";
+    request->send(200, "application/json", body);
   });
 
-  // Digital inputs config GET
-  server.on("/api/digital-inputs", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
-    String out = "";
-    if (Shared_lockFileSystem()) {
-      if (LittleFS.exists("/digital_inputs.json")) {
-        File f = LittleFS.open("/digital_inputs.json", "r");
-        if (f) { out = f.readString(); f.close(); }
-      }
-      Shared_unlockFileSystem();
-    }
-    if (out.length() == 0) {
-      // Default 4 inputs
-      out = R"RAW([
-  {"enabled":false,"name":"DI1","type":"NO","tta":5,"ttr":3,"alarmSms":false,"returnSms":false,"alarmMessage":"Alarm on DI1","returnMessage":"Return on DI1","contactId":""},
-  {"enabled":false,"name":"DI2","type":"NO","tta":5,"ttr":3,"alarmSms":false,"returnSms":false,"alarmMessage":"Alarm on DI2","returnMessage":"Return on DI2","contactId":""},
-  {"enabled":false,"name":"DI3","type":"NO","tta":5,"ttr":3,"alarmSms":false,"returnSms":false,"alarmMessage":"Alarm on DI3","returnMessage":"Return on DI3","contactId":""},
-  {"enabled":false,"name":"DI4","type":"NO","tta":5,"ttr":3,"alarmSms":false,"returnSms":false,"alarmMessage":"Alarm on DI4","returnMessage":"Return on DI4","contactId":""}
-])RAW";
-    }
-    request->send(200, "application/json", out);
-  });
-
-  // Digital inputs config POST (body received in onBody)
-  server.on("/api/digital-inputs", HTTP_POST, [](AsyncWebServerRequest *request){
-    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); gRequestBody.clear(); return; }
-    // Save last received body
-    if (gRequestBody.length() == 0) { request->send(400, "application/json", "{\"error\":\"Empty body\"}"); return; }
-    bool ok = false;
-    if (Shared_lockFileSystem()) {
-      File f = LittleFS.open("/digital_inputs.json", "w");
-      if (f) { f.print(gRequestBody); f.close(); ok = true; }
-      Shared_unlockFileSystem();
-    }
-    gRequestBody.clear();
-    if (ok) request->send(200, "application/json", "{\"status\":\"ok\"}");
-    else request->send(500, "application/json", "{\"error\":\"Failed to save\"}");
-  }, nullptr, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-    // append body data (single-thread assumption)
-    if (index == 0) gRequestBody = "";
-    gRequestBody.concat((const char*)data, len);
-  });
-
-  // Dashboard page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
+    if (!isAuthenticated(request)) {
+      sendRedirect(request, "/login");
+      return;
+    }
     request->send(200, "text/html", htmlPage());
   });
 
-  // Quick navigation placeholders
-  auto makePlaceholder = [](const char *title, const char *desc) {
-    String s = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>";
-    s += title;
-    s += "</title></head><body style=\"font-family:Arial, sans-serif;padding:18px\"><h1>";
-    s += title;
-    s += "</h1><p>";
-    s += desc;
-    s += "</p><p><a href=\"/\">Back to Dashboard</a></p></body></html>";
-    return s;
-  };
-
-  server.on("/digital-inputs", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", digitalInputsPage());
-  });
-
-  server.on("/analog-inputs", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Analog Inputs","Configure and view analog inputs (scaling, set/reset, alarms)"));
-  });
-
-  server.on("/relay-outputs", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Relay Outputs","Configure relay outputs, default states, alarm links") );
-  });
-
-  server.on("/alarm-management", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Alarm Management","View active alarms, ack/return actions") );
-  });
-
-  server.on("/phone-numbers", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", phoneNumbersPage() );
-  });
-
-  server.on("/network-config", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Network Configuration","Configure DHCP/static IP and AP parameters") );
-  });
-
-  server.on("/event-logs", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Event Logs","View stored event log entries") );
-  });
-
-  server.on("/diagnostics", HTTP_GET, [=](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) { sendRedirect(request, "/login"); return; }
-    request->send(200, "text/html", makePlaceholder("Diagnostics","Device, network and modem diagnostics") );
-  });
+  // Message CSV endpoints removed for RAMS; configuration is handled via Web UI
 
   serverRoutesSetup = true;
 }
@@ -800,17 +763,22 @@ static void startAPMode() {
 
   Serial.println("[AP] Starting Access Point...");
   WiFi.mode(WIFI_AP_STA);
-  delay(100);
-  IPAddress apIP(10,10,10,10);
-  IPAddress gateway(10,10,10,10);
-  IPAddress subnet(255,255,255,0);
-  WiFi.softAPConfig(apIP,gateway,subnet);
-  String ssid = readSerialNumber();
-  if (ssid.length()==0) ssid = "MSys"; else ssid = "MSys-" + ssid;
+  delay(100);  // Increased delay to let WiFi/Ethernet stack stabilize after mode change
+  IPAddress apIP(10, 10, 10, 10);
+  IPAddress gateway(10, 10, 10, 10);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(apIP, gateway, subnet);
+  String ssid = getAPSSID();
   WiFi.softAP(ssid.c_str(), AP_PASS_FIXED);
   delay(200);
-  Serial.print("[AP] SSID: "); Serial.println(ssid);
-  Serial.print("[AP] AP IP address: "); Serial.println(WiFi.softAPIP());
+
+  Serial.print("[AP] SSID: ");
+  Serial.println(ssid);
+  Serial.print("[AP] Password: ");
+  Serial.println(AP_PASS_FIXED);
+  Serial.print("[AP] AP IP address: ");
+  Serial.println(WiFi.softAPIP());
+
   Shared_setAPModeActive(true);
   digitalWrite(AP_STATUS_LED_PIN, HIGH);
   Serial.println("[AP] Access Point is now active");
@@ -818,10 +786,13 @@ static void startAPMode() {
 
 static void stopAPMode() {
   if (!Shared_isAPModeActive()) return;
+
   Serial.println("[AP] Stopping Access Point...");
   WiFi.softAPdisconnect(true);
+  // Keep STA mode alive so Web UI on Ethernet remains available.
   WiFi.mode(WIFI_STA);
-  delay(200);
+  delay(200);  // Increased delay to let WiFi/Ethernet stack stabilize after mode change
+
   Shared_setAPModeActive(false);
   digitalWrite(AP_STATUS_LED_PIN, LOW);
   Serial.println("[AP] Access Point is now disabled");
@@ -829,23 +800,163 @@ static void stopAPMode() {
 
 void AP_taskLoop(void *pvParameters) {
   (void)pvParameters;
-  unsigned long lastStateChange = 0;
+  static unsigned long lastStateChange = 0;
+
+  // Bring up base Wi-Fi stack without connecting, required by Async web stack.
   WiFi.mode(WIFI_STA);
   delay(50);
 
-  // Ensure filesystem ready
-  Shared_lockFileSystem();
+  // Reset old serial state when firmware build changes.
+  clearStaleSerialForNewBuild();
 
+  // Keep Web UI always active (Ethernet IP + AP IP when AP mode is enabled).
   setupWebServerRoutes();
-  if (!serverStarted) { server.begin(); serverStarted = true; Serial.println("[WEB] Config server started on port 80"); }
+  if (!serverStarted) {
+    server.begin();
+    serverStarted = true;
+    Serial.println("[WEB] Config server started on port 80 (always active)");
+  }
 
   for (;;) {
-    bool switchState = digitalRead(BUTTON_PIN);
+    bool switchState  = digitalRead(BUTTON_PIN);
     unsigned long now = millis();
+
     if (now - lastStateChange > BUTTON_DEBOUNCE_MS) {
-      if (switchState == LOW && !Shared_isAPModeActive()) { startAPMode(); lastStateChange = now; }
-      else if (switchState == HIGH && Shared_isAPModeActive()) { stopAPMode(); lastStateChange = now; }
+      if (switchState == LOW && !Shared_isAPModeActive()) {
+        startAPMode();
+        lastStateChange = now;
+      } else if (switchState == HIGH && Shared_isAPModeActive()) {
+        stopAPMode();
+        lastStateChange = now;
+      }
     }
+
     vTaskDelay(pdMS_TO_TICKS(50));
   }
+}
+
+static String htmlPage() {
+  return R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RAMS Dashboard</title>
+<style>
+  body { margin:0; font-family: Arial, sans-serif; height:100vh; display:flex; }
+  .sidebar { width:220px; background:#f4f6f8; border-right:1px solid #e0e0e0; padding:12px; box-sizing:border-box; }
+  .brand { font-weight:700; margin-bottom:12px; }
+  .nav { list-style:none; padding:0; margin:0; }
+  .nav li { padding:10px 8px; cursor:pointer; border-radius:6px; color:#222; }
+  .nav li.active { background:#e8f0ff; color:#0b57a4; font-weight:600; }
+  .content { flex:1; padding:18px; box-sizing:border-box; overflow:auto; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .tab { display:none; }
+  .tab.active { display:block; }
+  .btn { padding:8px 12px; border-radius:6px; border:0; cursor:pointer; }
+  .btn.primary { background:#1565c0; color:white; }
+  .small { font-size:13px; color:#666; }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="brand">RAMS</div>
+    <ul class="nav" id="nav">
+      <li data-tab="dashboard" class="active">Dashboard</li>
+      <li data-tab="digital">Digital Inputs</li>
+      <li data-tab="analog">Analog Inputs</li>
+      <li data-tab="relays">Relay Outputs</li>
+      <li data-tab="alarms">Alarm Management</li>
+      <li data-tab="phones">Phone Numbers</li>
+      <li data-tab="network">Network Configuration</li>
+      <li data-tab="events">Event Logs</li>
+      <li data-tab="diag">Diagnostics</li>
+    </ul>
+  </div>
+  <div class="content">
+    <div class="topbar">
+      <div><strong>RAMS</strong> <span class="small">Remote Alarm Monitoring System</span></div>
+      <div>
+        <button class="btn" onclick="location.href='/logout'">Logout</button>
+        <button class="btn primary" onclick="openGatewayConfig()">Gateway</button>
+      </div>
+    </div>
+
+    <div id="dashboard" class="tab active">
+      <h2>Dashboard</h2>
+      <div id="dashinfo">Loading...</div>
+    </div>
+
+    <div id="digital" class="tab">
+      <h2>Digital Inputs</h2>
+      <div class="small">Configure and view 4 digital inputs here (placeholder).</div>
+    </div>
+
+    <div id="analog" class="tab">
+      <h2>Analog Inputs</h2>
+      <div class="small">Configure and view 2 analog inputs here (placeholder).</div>
+    </div>
+
+    <div id="relays" class="tab">
+      <h2>Relay Outputs</h2>
+      <div class="small">Control 2 relay outputs (placeholder).</div>
+    </div>
+
+    <div id="alarms" class="tab">
+      <h2>Alarm Management</h2>
+      <div class="small">Alarm configuration and TTA/TTR (placeholder).</div>
+    </div>
+
+    <div id="phones" class="tab">
+      <h2>Phone Number Management</h2>
+      <div class="small">Manage authorized and recipient phone numbers (placeholder).</div>
+    </div>
+
+    <div id="network" class="tab">
+      <h2>Network Configuration</h2>
+      <div id="netcfg">Loading network configuration...</div>
+    </div>
+
+    <div id="events" class="tab">
+      <h2>Event Logs</h2>
+      <div class="small">Event log viewer (placeholder).</div>
+    </div>
+
+    <div id="diag" class="tab">
+      <h2>Diagnostics</h2>
+      <div class="small">System diagnostics and status (placeholder).</div>
+    </div>
+  </div>
+
+<script>
+function openGatewayConfig(){ location.href='/gateway-config'; }
+document.getElementById('nav').addEventListener('click', function(e){
+  var li = e.target.closest('li'); if(!li) return;
+  var tab = li.getAttribute('data-tab');
+  document.querySelectorAll('.nav li').forEach(function(n){ n.classList.remove('active'); });
+  li.classList.add('active');
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  var el = document.getElementById(tab); if(el) el.classList.add('active');
+});
+
+function loadDashboard(){
+  fetch('/api/dashboard').then(r=>r.json()).then(d=>{
+    var html = '<ul>';
+    html += '<li><strong>Serial:</strong> '+(d.serial_number||'Not set')+'</li>';
+    html += '<li><strong>AP IP:</strong> '+(d.ap_ip||'-')+'</li>';
+    html += '<li><strong>Ethernet IP:</strong> '+(d.eth_ip||'-')+'</li>';
+    html += '<li><strong>DHCP:</strong> '+(d.use_dhcp? 'Enabled':'Disabled')+'</li>';
+    html += '<li><strong>Static IP:</strong> '+(d.static_ip||'-')+'</li>';
+    html += '</ul>';
+    document.getElementById('dashinfo').innerHTML = html;
+    document.getElementById('netcfg').textContent = '';
+  }).catch(e=>{ document.getElementById('dashinfo').textContent = 'Failed to load dashboard'; });
+}
+loadDashboard();
+</script>
+</body>
+</html>
+
+)rawliteral";
 }

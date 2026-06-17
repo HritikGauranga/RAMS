@@ -1,0 +1,3 @@
+arduino-libraries/ArduinoModbus@^1.0.9
+esp32async/ESPAsyncWebServer@^3.10.3
+emelianov/modbus-esp8266@^4.1.0

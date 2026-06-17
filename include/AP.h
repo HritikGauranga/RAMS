@@ -1,9 +1,6 @@
-#ifndef AP_H
-#define AP_H
+#pragma once
 
-#include <Arduino.h>
-
-// AP task entry
+void ensureMBMapConfigFile();
+void printMBMapSummary();
+void printAPStatus();
 void AP_taskLoop(void *pvParameters);
-
-#endif // AP_H

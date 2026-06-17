@@ -354,7 +354,7 @@ static String serialNumberPage(const String &currentSerial, const String &messag
     formBlock = R"rawliteral(
       <form method="POST" action="/serialnumber/">
         <label for="serial">Serial Number</label>
-        <input id="serial" name="serial" type="text" placeholder="e.g. OMS0001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
+        <input id="serial" name="serial" type="text" placeholder="e.g. RAMS0001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
         <button type="submit">Set Serial Number</button>
       </form>
     )rawliteral";
@@ -506,7 +506,7 @@ function loadCfg(){
     document.getElementById('staticIp').value=c.static_ip||'';
     document.getElementById('subnetMask').value=c.subnet_mask||'';
     document.getElementById('gatewayIp').value=c.gateway_ip||'';
-    document.getElementById('tcpPort').value=c.tcp_port;
+    document.getElementById('tcpPort').value=c.http_port;
   }).catch(e=>status('Load failed: '+e.message,false));
 }
 function saveCfg(){
@@ -515,7 +515,7 @@ function saveCfg(){
   p.append('static_ip',document.getElementById('staticIp').value.trim());
   p.append('subnet_mask',document.getElementById('subnetMask').value.trim());
   p.append('gateway_ip',document.getElementById('gatewayIp').value.trim());
-  p.append('tcp_port',document.getElementById('tcpPort').value);
+  p.append('http_port',document.getElementById('tcpPort').value);
   fetch('/api/gateway-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()})
     .then(r=>r.json()).then(d=>{ if(d.success) status('Saved. Reboot to apply.',true); else status(d.error||'Save failed',false); })
     .catch(e=>status('Save failed: '+e.message,false));
@@ -631,84 +631,8 @@ static void setupWebServerRoutes() {
     request->send(200, "text/html", serialNumberPage(current, msg, true));
   });
 
-  server.on("/gateway-config", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      sendRedirect(request, "/login");
-      return;
-    }
-    request->send(200, "text/html", gatewaySettingsPage());
-  });
-
-  server.on("/gateway-config/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      sendRedirect(request, "/login");
-      return;
-    }
-    request->send(200, "text/html", gatewaySettingsPage());
-  });
-
-  server.on("/api/gateway-settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    GatewaySettings s = {};
-    if (!Shared_getGatewaySettings(s)) {
-      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
-      return;
-    }
-    String body = "{";
-    body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
-    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
-    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
-    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
-    body += "\"tcp_port\":" + String(s.tcpPort) + ",";
-    body += "\"baud_rate\":" + String((unsigned long)s.baudRate) + ",";
-    body += "\"data_bits\":" + String(s.dataBits) + ",";
-    body += "\"parity\":\"" + String(s.parity) + "\",";
-    body += "\"stop_bits\":" + String(s.stopBits);
-    body += "}";
-    request->send(200, "application/json", body);
-  });
-
-  server.on("/api/gateway-settings", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-
-    auto val = [&](const char *k) -> String {
-      return request->hasParam(k, true) ? request->getParam(k, true)->value() : "";
-    };
-    GatewaySettings s = {};
-    Shared_getGatewaySettings(s);
-
-    s.useDhcp = (val("use_dhcp") == "1");
-    String tcpPortText = val("tcp_port");
-    if (tcpPortText.startsWith("-")) {
-      request->send(400, "application/json", "{\"error\":\"Negative values are not allowed\"}");
-      return;
-    }
-    long tcpPortLong = tcpPortText.toInt();
-    if (tcpPortLong < 1 || tcpPortLong > 65535) {
-      request->send(400, "application/json", "{\"error\":\"TCP Port must be 1-65535\"}");
-      return;
-    }
-    s.tcpPort = (uint16_t)tcpPortLong;
-
-    if (!parseIPFromText(val("static_ip"), s.staticIp) ||
-        !parseIPFromText(val("subnet_mask"), s.subnetMask) ||
-        !parseIPFromText(val("gateway_ip"), s.gatewayIp)) {
-      request->send(400, "application/json", "{\"error\":\"Invalid IP format\"}");
-      return;
-    }
-
-    if (!Shared_saveGatewaySettings(s)) {
-      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
-      return;
-    }
-    request->send(200, "application/json", "{\"success\":true}");
-  });
+  // Gateway config page and API removed; Network configuration handled under
+  // the Network tab in the Web UI which currently fetches /api/dashboard.
 
   server.on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
@@ -740,7 +664,8 @@ static void setupWebServerRoutes() {
     body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
     body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
     body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
-    body += "\"tcp_port\":" + String(s.tcpPort);
+    body += "\"http_port\":" + String(s.httpPort) + ",";
+    body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
@@ -844,114 +769,117 @@ static String htmlPage() {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>RAMS Dashboard</title>
 <style>
-  body { margin:0; font-family: Arial, sans-serif; height:100vh; display:flex; }
-  .sidebar { width:220px; background:#f4f6f8; border-right:1px solid #e0e0e0; padding:12px; box-sizing:border-box; }
-  .brand { font-weight:700; margin-bottom:12px; }
-  .nav { list-style:none; padding:0; margin:0; }
-  .nav li { padding:10px 8px; cursor:pointer; border-radius:6px; color:#222; }
-  .nav li.active { background:#e8f0ff; color:#0b57a4; font-weight:600; }
-  .content { flex:1; padding:18px; box-sizing:border-box; overflow:auto; }
-  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
-  .tab { display:none; }
-  .tab.active { display:block; }
-  .btn { padding:8px 12px; border-radius:6px; border:0; cursor:pointer; }
-  .btn.primary { background:#1565c0; color:white; }
-  .small { font-size:13px; color:#666; }
+  :root{--bg:#f3f6f9;--muted:#6b7280;--primary:#1565c0;--card:#eef7ff}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:#0f172a}
+  .layout{display:flex;min-height:100vh}
+  .sidebar{width:240px;background:#fff;border-right:1px solid #e6eef7;padding:20px}
+  .brand{font-weight:700;color:var(--primary);font-size:18px;margin-bottom:12px}
+  .nav{list-style:none;padding:0;margin:0}
+  .nav li{padding:10px 12px;border-radius:8px;color:#475569;cursor:pointer;margin-bottom:6px}
+  .nav li.active{background:#e8f6ff;color:var(--primary);font-weight:600}
+  .content{flex:1;padding:20px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .actions{display:flex;gap:8px}
+  .btn{padding:8px 14px;border-radius:8px;border:0;cursor:pointer;font-weight:700}
+  .btn.primary{background:var(--primary);color:#fff}
+  .btn.ghost{background:transparent;color:var(--primary);border:1px solid rgba(21,101,192,0.08)}
+  .btn.danger{background:#d32f2f;color:#fff}
+  .panel{background:#fff;border-radius:12px;padding:16px;box-shadow:0 8px 24px rgba(2,6,23,0.06)}
+  h2{margin:0;font-size:18px}
+  .subtitle{color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px}
+  .stat{background:var(--card);border-radius:10px;padding:14px}
+  .stat .label{color:var(--muted);font-size:13px}
+  .stat .value{font-weight:700;margin-top:6px;font-size:15px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}.sidebar{display:none}}
 </style>
 </head>
 <body>
-  <div class="sidebar">
-    <div class="brand">RAMS</div>
-    <ul class="nav" id="nav">
-      <li data-tab="dashboard" class="active">Dashboard</li>
-      <li data-tab="digital">Digital Inputs</li>
-      <li data-tab="analog">Analog Inputs</li>
-      <li data-tab="relays">Relay Outputs</li>
-      <li data-tab="alarms">Alarm Management</li>
-      <li data-tab="phones">Phone Numbers</li>
-      <li data-tab="network">Network Configuration</li>
-      <li data-tab="events">Event Logs</li>
-      <li data-tab="diag">Diagnostics</li>
-    </ul>
-  </div>
-  <div class="content">
-    <div class="topbar">
-      <div><strong>RAMS</strong> <span class="small">Remote Alarm Monitoring System</span></div>
-      <div>
-        <button class="btn" onclick="location.href='/logout'">Logout</button>
-        <button class="btn primary" onclick="openGatewayConfig()">Gateway</button>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="brand">RAMS</div>
+      <ul class="nav" id="nav">
+        <li data-tab="dashboard" class="active">Dashboard</li>
+        <li data-tab="digital">Digital Inputs</li>
+        <li data-tab="analog">Analog Inputs</li>
+        <li data-tab="relays">Relay Outputs</li>
+        <li data-tab="alarms">Alarm Management</li>
+        <li data-tab="phones">Phone Numbers</li>
+        <li data-tab="network">Network Configuration</li>
+        <li data-tab="sysconfig">System Config</li>
+        <li data-tab="diag">Diagnostics</li>
+      </ul>
+    </div>
+    <div class="content">
+      <div class="topbar">
+        <div>
+          <h2>Dashboard</h2>
+          <div class="subtitle">Current Configuration Status</div>
+        </div>
+        <div class="actions">
+          <button class="btn danger" onclick="location.href='/logout'">Logout</button>
+        </div>
       </div>
-    </div>
 
-    <div id="dashboard" class="tab active">
-      <h2>Dashboard</h2>
-      <div id="dashinfo">Loading...</div>
-    </div>
+      <div id="dashboard" class="tab active">
+        <div class="panel">
+          <div class="grid" id="dashGrid">
+            <div class="stat"><div class="label">Serial Number</div><div class="value" id="s_serial">Loading...</div></div>
+            <div class="stat"><div class="label">Login User Name</div><div class="value" id="s_login">Loading...</div></div>
+            <div class="stat"><div class="label">Wi‑Fi AP IP</div><div class="value" id="s_apip">Loading...</div></div>
+            <div class="stat"><div class="label">Ethernet IP</div><div class="value" id="s_ethip">Loading...</div></div>
+            <div class="stat"><div class="label">DHCP Mode</div><div class="value" id="s_dhcp">Loading...</div></div>
+            <div class="stat"><div class="label">Static IP</div><div class="value" id="s_static">Loading...</div></div>
+            <div class="stat"><div class="label">Subnet Mask</div><div class="value" id="s_subnet">Loading...</div></div>
+            <div class="stat"><div class="label">Gateway IP</div><div class="value" id="s_gateway">Loading...</div></div>
+            <div class="stat"><div class="label">HTTP Port</div><div class="value" id="s_httpport">-</div></div>
+            <div class="stat"><div class="label">Firmware</div><div class="value" id="s_fw">-</div></div>
+          </div>
+        </div>
+      </div>
 
-    <div id="digital" class="tab">
-      <h2>Digital Inputs</h2>
-      <div class="small">Configure and view 4 digital inputs here (placeholder).</div>
-    </div>
-
-    <div id="analog" class="tab">
-      <h2>Analog Inputs</h2>
-      <div class="small">Configure and view 2 analog inputs here (placeholder).</div>
-    </div>
-
-    <div id="relays" class="tab">
-      <h2>Relay Outputs</h2>
-      <div class="small">Control 2 relay outputs (placeholder).</div>
-    </div>
-
-    <div id="alarms" class="tab">
-      <h2>Alarm Management</h2>
-      <div class="small">Alarm configuration and TTA/TTR (placeholder).</div>
-    </div>
-
-    <div id="phones" class="tab">
-      <h2>Phone Number Management</h2>
-      <div class="small">Manage authorized and recipient phone numbers (placeholder).</div>
-    </div>
-
-    <div id="network" class="tab">
-      <h2>Network Configuration</h2>
-      <div id="netcfg">Loading network configuration...</div>
-    </div>
-
-    <div id="events" class="tab">
-      <h2>Event Logs</h2>
-      <div class="small">Event log viewer (placeholder).</div>
-    </div>
-
-    <div id="diag" class="tab">
-      <h2>Diagnostics</h2>
-      <div class="small">System diagnostics and status (placeholder).</div>
+      <div id="digital" class="tab" style="display:none"><div class="panel"><h2>Digital Inputs</h2><div class="subtitle">Configure and view 4 digital inputs here (placeholder).</div></div></div>
+      <div id="analog" class="tab" style="display:none"><div class="panel"><h2>Analog Inputs</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
+      <div id="relays" class="tab" style="display:none"><div class="panel"><h2>Relay Outputs</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
+      <div id="alarms" class="tab" style="display:none"><div class="panel"><h2>Alarm Management</h2><div class="subtitle">Alarm configuration and TTA/TTR (placeholder).</div></div></div>
+      <div id="phones" class="tab" style="display:none"><div class="panel"><h2>Phone Number Management</h2><div class="subtitle">Manage authorized and recipient phone numbers (placeholder).</div></div></div>
+      <div id="network" class="tab" style="display:none"><div class="panel"><h2>Network Configuration</h2><div id="netcfg" class="subtitle">Loading network configuration...</div></div></div>
+      <div id="sysconfig" class="tab" style="display:none"><div class="panel"><h2>System Config</h2><div class="subtitle">System configuration and device-wide settings (placeholder).</div></div></div>
+      <div id="diag" class="tab" style="display:none"><div class="panel"><h2>Diagnostics</h2><div class="subtitle">System diagnostics and status (placeholder).</div></div></div>
     </div>
   </div>
 
 <script>
-function openGatewayConfig(){ location.href='/gateway-config'; }
 document.getElementById('nav').addEventListener('click', function(e){
   var li = e.target.closest('li'); if(!li) return;
   var tab = li.getAttribute('data-tab');
   document.querySelectorAll('.nav li').forEach(function(n){ n.classList.remove('active'); });
   li.classList.add('active');
-  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
-  var el = document.getElementById(tab); if(el) el.classList.add('active');
+  document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
+  var el = document.getElementById(tab); if(el) el.style.display='block';
 });
 
+function setStat(id, value){ var el=document.getElementById(id); if(el) el.textContent = value; }
+
 function loadDashboard(){
-  fetch('/api/dashboard').then(r=>r.json()).then(d=>{
-    var html = '<ul>';
-    html += '<li><strong>Serial:</strong> '+(d.serial_number||'Not set')+'</li>';
-    html += '<li><strong>AP IP:</strong> '+(d.ap_ip||'-')+'</li>';
-    html += '<li><strong>Ethernet IP:</strong> '+(d.eth_ip||'-')+'</li>';
-    html += '<li><strong>DHCP:</strong> '+(d.use_dhcp? 'Enabled':'Disabled')+'</li>';
-    html += '<li><strong>Static IP:</strong> '+(d.static_ip||'-')+'</li>';
-    html += '</ul>';
-    document.getElementById('dashinfo').innerHTML = html;
-    document.getElementById('netcfg').textContent = '';
-  }).catch(e=>{ document.getElementById('dashinfo').textContent = 'Failed to load dashboard'; });
+  fetch('/api/dashboard').then(r=>{
+    if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(d=>{
+    setStat('s_serial', d.serial_number || 'Not Set');
+    setStat('s_login', d.login_user || 'Admin');
+    setStat('s_apip', d.ap_ip || '-');
+    setStat('s_ethip', d.eth_ip || '-');
+    setStat('s_dhcp', d.use_dhcp ? 'Enabled' : 'Disabled');
+    setStat('s_static', d.static_ip || '-');
+    setStat('s_subnet', d.subnet_mask || '-');
+    setStat('s_gateway', d.gateway_ip || '-');
+    setStat('s_httpport', d.http_port ? String(d.http_port) : '-');
+    setStat('s_fw', d.fw_build || '-');
+    // Clear network loading placeholder
+    var nc = document.getElementById('netcfg'); if(nc) nc.textContent = '';
+  }).catch(e=>{ if(e !== 'auth') console.log('dashboard load failed', e); });
 }
 loadDashboard();
 </script>

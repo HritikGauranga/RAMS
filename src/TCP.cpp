@@ -42,7 +42,7 @@ static unsigned long lastInvalidIpDhcpRetryMs = 0;
 static uint8_t invalidIpDhcpFailCount = 0;
 static unsigned long dhcpHoldoverGraceUntilMs = 0;
 static unsigned long lastTcpWorkMs = 0;
-static uint16_t configuredTcpPort = 502;
+static uint16_t configuredHttpPort = 80;
 static bool invalidIpStateLogged = false;
 static bool linkDownStateLogged = false;
 static unsigned long lastDhcpPromotionDeferredLogMs = 0;
@@ -274,7 +274,7 @@ void TCP_init() {
   GatewaySettings settings = {};
   Shared_getGatewaySettings(settings);
   suppressW5500DisconnectNoise();
-  configuredTcpPort = settings.tcpPort;
+  configuredHttpPort = settings.httpPort;
   dhcpConfigured = settings.useDhcp;
   runningOnStaticFallback = false;
   networkReady = false;
@@ -330,8 +330,8 @@ void TCP_init() {
   Serial.print("[ETH] Subnet: ");  Serial.println(ETH.subnetMask());
   Serial.print("[ETH] Gateway: "); Serial.println(ETH.gatewayIP());
   Shared_unlockSPI();
-  Serial.print("[ETH] TCP Port: ");
-  Serial.println(settings.tcpPort);
+  Serial.print("[ETH] HTTP Port: ");
+  Serial.println(settings.httpPort);
 
   if (!ethInitialized || !networkReady) {
     Serial.println("[ETH] ERROR: Ethernet not ready, network service not started");

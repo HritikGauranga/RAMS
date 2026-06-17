@@ -281,16 +281,18 @@ bool Modem_init() {
 // ---------------------------------------------------------------------------
 // dispatchMessage
 // ---------------------------------------------------------------------------
-static int16_t dispatchMessage(size_t messageIndex) {
-  MessageConfig config = {};
-  if (!Shared_getMessageConfig(messageIndex, config)) return STATUS_ERROR_CONFIG;
-  if (config.phoneCount == 0)                         return STATUS_ERROR_EMPTY;
+static int16_t dispatchMessage(size_t inputIndex) {
+  PhoneList pl = {};
+  if (!Shared_getPhoneList(pl)) return STATUS_ERROR_CONFIG;
+  if (pl.count == 0) return STATUS_ERROR_EMPTY;
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   uint8_t sentCount = 0;
-  for (size_t i = 0; i < PHONE_SLOTS_PER_MESSAGE; ++i) {
-    if (config.phoneNumbers[i][0] == '\0') continue;
-    String number = String(config.phoneNumbers[i]);
+  String msg = "Alarm on input " + String((unsigned)inputIndex + 1);
+
+  for (size_t i = 0; i < pl.count && i < MAX_PHONE_PER_LIST; ++i) {
+    String number = String(pl.numbers[i]);
+    if (number.length() == 0) continue;
     String normalizedNumber;
     if (!normalizePhoneNumber(number, normalizedNumber)) {
       Serial.printf("[SMS] Skipping invalid number format: %s\n", number.c_str());
@@ -302,9 +304,7 @@ static int16_t dispatchMessage(size_t messageIndex) {
       break;
     }
 
-    if (sendSMS(normalizedNumber, String(config.text))) {
-      sentCount++;
-    }
+    if (sendSMS(normalizedNumber, msg)) sentCount++;
   }
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER,
@@ -324,22 +324,22 @@ static int16_t dispatchMessage(size_t messageIndex) {
 // corresponding result register is cleared back to STATUS_IDLE (0).
 // This resets the slot so the PLC can write 1 again to retrigger.
 // ---------------------------------------------------------------------------
-static bool pendingSlots[MESSAGE_SLOT_COUNT] = {};
-static uint8_t lowStableCount[MESSAGE_SLOT_COUNT] = {};
+static bool pendingSlots[DIGITAL_INPUT_COUNT] = {};
+static uint8_t lowStableCount[DIGITAL_INPUT_COUNT] = {};
 
-static void scanTriggerEdges(bool previousState[MESSAGE_SLOT_COUNT]) {
+static void scanTriggerEdges(bool previousState[DIGITAL_INPUT_COUNT]) {
   SystemSnapshot snapshot = Shared_getSnapshot();
   constexpr uint8_t LOW_REARM_SCANS = 4; // 4 * 25ms ~= 100ms stable low
 
-  for (size_t i = 0; i < MESSAGE_SLOT_COUNT; ++i) {
-    bool current = snapshot.triggerRegs[i] == 1;
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+    bool current = snapshot.digitalInputs[i] != 0;
 
     if (!current) {
       if (lowStableCount[i] < 255) lowStableCount[i]++;
       if (previousState[i] && lowStableCount[i] >= LOW_REARM_SCANS) {
-        Shared_writeResultRegister(i, STATUS_IDLE);
+        Shared_writeAlarmResult(i, STATUS_IDLE);
         previousState[i] = false;
-        Serial.printf("[EDGE] Slot %u cleared (trigger -> 0)\n", (unsigned)i);
+        Serial.printf("[EDGE] Input %u cleared (-> 0)\n", (unsigned)i);
       }
       continue;
     }
@@ -355,10 +355,10 @@ static void scanTriggerEdges(bool previousState[MESSAGE_SLOT_COUNT]) {
 
 static bool takeNextPendingSlot(size_t &slotIndex) {
   SystemSnapshot snapshot = Shared_getSnapshot();
-  for (size_t i = 0; i < MESSAGE_SLOT_COUNT; ++i) {
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     if (!pendingSlots[i]) continue;
 
-    if (snapshot.triggerRegs[i] == 0) {
+    if (snapshot.digitalInputs[i] == 0) {
       pendingSlots[i] = false;
       continue;
     }
@@ -377,7 +377,7 @@ void Modem_task(void *pvParameters) {
   initModem();
   Serial.println("[MODEM TASK] Init complete, starting SMS processing");
 
-  bool   previousState[MESSAGE_SLOT_COUNT] = {};
+  bool   previousState[DIGITAL_INPUT_COUNT] = {};
   size_t slotToProcess = 0;
 
   for (;;) {
@@ -414,12 +414,12 @@ void Modem_task(void *pvParameters) {
       }
 
       if (!modemReady) {
-        Shared_writeResultRegister(slotToProcess, simMissingLatched ? STATUS_ERROR_SIM : STATUS_ERROR_MODEM);
+        Shared_writeAlarmResult(slotToProcess, simMissingLatched ? STATUS_ERROR_SIM : STATUS_ERROR_MODEM);
         continue;
       }
 
       int16_t result = dispatchMessage(slotToProcess);
-      Shared_writeResultRegister(slotToProcess, result);
+      Shared_writeAlarmResult(slotToProcess, result);
     }
 
     vTaskDelay(pdMS_TO_TICKS(25));

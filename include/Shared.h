@@ -105,6 +105,7 @@ bool Shared_saveGatewaySettings(const GatewaySettings &settings);
 
 // Phone list access
 bool Shared_getPhoneList(PhoneList &out);
+bool Shared_savePhoneList(const PhoneList &list);
 
 // Alarm result storage (per-input)
 bool Shared_writeAlarmResult(size_t index, int16_t value);

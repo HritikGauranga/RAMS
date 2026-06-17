@@ -5,6 +5,8 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <time.h>
+#include <stdlib.h>
 
 static AsyncWebServer server(80);
 static bool          serverStarted     = false;
@@ -409,6 +411,21 @@ static String ipBytesToString(const uint8_t ip[4]) {
   return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
 }
 
+static String escapeJson(const String &s) {
+  String out;
+  out.reserve(s.length() * 2);
+  for (size_t i = 0; i < s.length(); ++i) {
+    char c = s.charAt(i);
+    if (c == '"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') out += "\\r";
+    else if (c == '\t') out += "\\t";
+    else out += c;
+  }
+  return out;
+}
+
 static bool parseIPFromText(const String &src, uint8_t out[4]) {
   int parts[4] = {0, 0, 0, 0};
   int p = 0;
@@ -670,6 +687,175 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", body);
   });
 
+  // System Config endpoints: store site details and timezone in LittleFS
+  server.on("/api/system-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    const char *cfgPath = "/system_config.json";
+    String body = "";
+    if (!Shared_lockFileSystem()) {
+      request->send(500, "application/json", "{\"error\":\"FS busy\"}");
+      return;
+    }
+    if (LittleFS.exists(cfgPath)) {
+      File f = LittleFS.open(cfgPath, "r");
+      if (f) {
+        body = f.readString();
+        f.close();
+      }
+    }
+    Shared_unlockFileSystem();
+    if (body.length() == 0) {
+      body = "{\"site_name\":\"\",\"site_address\":\"\",\"timezone\":\"UTC0\"}";
+    }
+    request->send(200, "application/json", body);
+  });
+
+  server.on("/api/system-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String site = request->hasParam("site_name", true) ? request->getParam("site_name", true)->value() : "";
+    String addr = request->hasParam("site_address", true) ? request->getParam("site_address", true)->value() : "";
+    String tz = request->hasParam("timezone", true) ? request->getParam("timezone", true)->value() : "";
+    site.trim(); addr.trim(); tz.trim();
+
+    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\",\"timezone\":\"" + escapeJson(tz) + "\"}";
+
+    if (!Shared_lockFileSystem(pdMS_TO_TICKS(2000))) {
+      request->send(500, "application/json", "{\"error\":\"FS busy\"}");
+      return;
+    }
+    File f = LittleFS.open("/system_config.json", "w");
+    if (!f) {
+      Shared_unlockFileSystem();
+      request->send(500, "application/json", "{\"error\":\"Write failed\"}");
+      return;
+    }
+    f.print(json);
+    f.close();
+    Shared_unlockFileSystem();
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
+  server.on("/api/restart-ntp", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String tz = request->hasParam("timezone", true) ? request->getParam("timezone", true)->value() : "";
+    if (tz.length() > 0) {
+      setenv("TZ", tz.c_str(), 1);
+      tzset();
+    }
+    // Restart SNTP/NTP client
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
+  // Phone list endpoints
+  server.on("/api/phones", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    PhoneList pl = {};
+    if (!Shared_getPhoneList(pl)) {
+      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
+      return;
+    }
+    String body = "{\"phones\":[";
+    for (size_t i = 0; i < pl.count; ++i) {
+      if (i) body += ",";
+      body += "\"" + escapeJson(String(pl.numbers[i])) + "\"";
+    }
+    body += "]}";
+    request->send(200, "application/json", body);
+  });
+
+  server.on("/api/phones", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String phonesParam = request->hasParam("phones", true) ? request->getParam("phones", true)->value() : "";
+    phonesParam.trim();
+    PhoneList pl = {};
+    if (phonesParam.length() > 0) {
+      // split by comma or newline
+      int start = 0;
+      for (;;) {
+        int comma = phonesParam.indexOf(',', start);
+        String token;
+        if (comma < 0) {
+          token = phonesParam.substring(start);
+        } else {
+          token = phonesParam.substring(start, comma);
+        }
+        token.trim();
+        if (token.length() > 0 && pl.count < MAX_PHONE_PER_LIST) {
+          token.toCharArray(pl.numbers[pl.count], PHONE_NUMBER_LENGTH);
+          ++pl.count;
+        }
+        if (comma < 0) break;
+        start = comma + 1;
+      }
+    }
+    if (!Shared_savePhoneList(pl)) {
+      request->send(400, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
+  // Network settings endpoints (used by Network tab)
+  server.on("/api/gateway-settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    GatewaySettings s = {};
+    if (!Shared_getGatewaySettings(s)) {
+      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
+      return;
+    }
+    String body = "{";
+    body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
+    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
+    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
+    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
+    body += "\"http_port\":" + String(s.httpPort);
+    body += "}";
+    request->send(200, "application/json", body);
+  });
+
+  server.on("/api/gateway-settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    GatewaySettings s = {};
+    s.useDhcp = request->hasParam("use_dhcp", true) ? (request->getParam("use_dhcp", true)->value() == "1") : false;
+    String sip = request->hasParam("static_ip", true) ? request->getParam("static_ip", true)->value() : "";
+    String sm = request->hasParam("subnet_mask", true) ? request->getParam("subnet_mask", true)->value() : "";
+    String gw = request->hasParam("gateway_ip", true) ? request->getParam("gateway_ip", true)->value() : "";
+    String port = request->hasParam("http_port", true) ? request->getParam("http_port", true)->value() : "80";
+
+    if (sip.length() > 0) parseIPFromText(sip, s.staticIp);
+    if (sm.length() > 0) parseIPFromText(sm, s.subnetMask);
+    if (gw.length() > 0) parseIPFromText(gw, s.gatewayIp);
+    s.httpPort = (uint16_t)port.toInt();
+
+    if (!Shared_saveGatewaySettings(s)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
@@ -793,6 +979,16 @@ static String htmlPage() {
   .stat .label{color:var(--muted);font-size:13px}
   .stat .value{font-weight:700;margin-top:6px;font-size:15px}
   @media(max-width:900px){.grid{grid-template-columns:1fr}.sidebar{display:none}}
+
+  /* System Config form layout */
+  .form-section{margin-top:14px;padding-top:8px;border-top:0}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  .field{display:flex;flex-direction:column}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:13px;color:#444;margin-bottom:6px}
+  .input{width:100%;padding:10px 12px;border:1px solid #dfe6ee;border-radius:8px;font-size:14px}
+  .form-actions{margin-top:10px}
+  @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -843,9 +1039,100 @@ static String htmlPage() {
       <div id="analog" class="tab" style="display:none"><div class="panel"><h2>Analog Inputs</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
       <div id="relays" class="tab" style="display:none"><div class="panel"><h2>Relay Outputs</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
       <div id="alarms" class="tab" style="display:none"><div class="panel"><h2>Alarm Management</h2><div class="subtitle">Alarm configuration and TTA/TTR (placeholder).</div></div></div>
-      <div id="phones" class="tab" style="display:none"><div class="panel"><h2>Phone Number Management</h2><div class="subtitle">Manage authorized and recipient phone numbers (placeholder).</div></div></div>
-      <div id="network" class="tab" style="display:none"><div class="panel"><h2>Network Configuration</h2><div id="netcfg" class="subtitle">Loading network configuration...</div></div></div>
-      <div id="sysconfig" class="tab" style="display:none"><div class="panel"><h2>System Config</h2><div class="subtitle">System configuration and device-wide settings (placeholder).</div></div></div>
+      <div id="phones" class="tab" style="display:none">
+        <div class="panel">
+          <h2>Phone Number Management</h2>
+          <div id="phones_status" style="display:none;margin-bottom:12px"></div>
+          <div class="subtitle">Enter one phone number per line (max 10). Use + for international format.</div>
+          <textarea id="phones_text" rows="8" style="width:100%;padding:8px;border:1px solid #dfe6ee;border-radius:8px;margin-top:8px"></textarea>
+          <div style="margin-top:10px"><button class="btn primary" onclick="savePhones()">Save Phone Numbers</button></div>
+        </div>
+      </div>
+
+      <div id="network" class="tab" style="display:none">
+        <div class="panel">
+          <h2>Network Configuration</h2>
+          <div id="net_status" style="display:none;margin-bottom:12px"></div>
+
+          <div class="form-section">
+            <h3>Connection Mode</h3>
+            <div class="field full">
+              <div class="row">
+                <input id="net_useDhcp" type="checkbox" style="width:auto" onchange="toggleNetworkStaticFields()">
+                <label for="net_useDhcp" style="margin:0 0 0 8px">Use DHCP for Ethernet</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>Static Network Settings</h3>
+            <div class="form-grid">
+              <div class="field">
+                <label>Static IP</label>
+                <input id="net_staticIp" class="input" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
+              </div>
+              <div class="field">
+                <label>Subnet Mask</label>
+                <input id="net_subnetMask" class="input" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
+              </div>
+              <div class="field">
+                <label>Gateway IP</label>
+                <input id="net_gatewayIp" class="input" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
+              </div>
+              <div class="field">
+                <label>HTTP Port</label>
+                <input id="net_tcpPort" class="input" type="number" min="1" max="65535" inputmode="numeric" oninput="sanitizeNumberInput(this)">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
+              <a href="/" class="muted" style="margin-left:12px">Back to Dashboard</a>
+            </div>
+            <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
+          </div>
+        </div>
+      </div>
+      <div id="sysconfig" class="tab" style="display:none">
+        <div class="panel">
+          <h2>System Config</h2>
+          <div id="sys_status" style="display:none;margin-bottom:12px"></div>
+
+          <div class="form-section">
+            <h3>Site Details</h3>
+            <div class="form-grid">
+              <div class="field">
+                <label>Site Name</label>
+                <input id="site_name" type="text" class="input">
+              </div>
+              <div class="field full">
+                <label>Site Address</label>
+                <textarea id="site_address" rows="3" class="input"></textarea>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn primary" onclick="saveSystemConfig()">Save Site Details</button>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>Real Time Clock (RTC)</h3>
+            <div class="field">
+              <label>Time Zone</label>
+              <select id="timezone" class="input">
+                <option value="UTC0">UTC</option>
+                <option value="GMT0BST,M3.5.0/01:00:00,M10.5.0/02:00:00">Europe/London</option>
+                <option value="CET-1CEST,M3.5.0/02:00:00,M10.5.0/03:00:00">Europe/Berlin</option>
+                <option value="IST-5:30">Asia/Kolkata</option>
+                <option value="EST5EDT,M3.2.0/02:00:00,M11.1.0/02:00:00">America/New_York</option>
+                <option value="AEST-10AEDT,M10.1.0/02:00:00,M4.1.0/03:00:00">Australia/Sydney</option>
+              </select>
+            </div>
+            <div class="form-actions">
+              <button class="btn" onclick="restartNtp()">Restart NTP Service</button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="diag" class="tab" style="display:none"><div class="panel"><h2>Diagnostics</h2><div class="subtitle">System diagnostics and status (placeholder).</div></div></div>
     </div>
   </div>
@@ -858,6 +1145,10 @@ document.getElementById('nav').addEventListener('click', function(e){
   li.classList.add('active');
   document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
   var el = document.getElementById(tab); if(el) el.style.display='block';
+  if (tab === 'sysconfig') loadSystemConfig();
+  if (tab === 'phones') loadPhones();
+  if (tab === 'network') loadNetworkCfg();
+  
 });
 
 function setStat(id, value){ var el=document.getElementById(id); if(el) el.textContent = value; }
@@ -881,7 +1172,124 @@ function loadDashboard(){
     var nc = document.getElementById('netcfg'); if(nc) nc.textContent = '';
   }).catch(e=>{ if(e !== 'auth') console.log('dashboard load failed', e); });
 }
+function showStatus(msg, ok) {
+  var el = document.getElementById('sys_status'); if (!el) return;
+  el.textContent = msg; el.style.display = 'block'; el.style.color = ok ? 'green' : 'red';
+  setTimeout(function() { el.style.display = 'none'; }, 4000);
+}
+
+function loadSystemConfig(){
+  fetch('/api/system-config').then(r=>{
+    if (r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(cfg=>{
+    var sn = document.getElementById('site_name'); if (sn) sn.value = cfg.site_name || '';
+    var sa = document.getElementById('site_address'); if (sa) sa.value = cfg.site_address || '';
+    var tz = cfg.timezone || 'UTC0';
+    var tzSel = document.getElementById('timezone');
+    if (tzSel) {
+      var found = false;
+      for (var i=0;i<tzSel.options.length;i++) { if (tzSel.options[i].value === tz) { tzSel.selectedIndex = i; found = true; break; } }
+      if (!found) { var o = document.createElement('option'); o.value = tz; o.text = tz; tzSel.add(o); tzSel.value = tz; }
+    }
+    
+  }).catch(e=>{ if (e !== 'auth') console.log('load sysconfig failed', e); });
+}
+
+function saveSystemConfig(){
+  var p = new URLSearchParams();
+  p.append('site_name', document.getElementById('site_name').value.trim());
+  p.append('site_address', document.getElementById('site_address').value.trim());
+  p.append('timezone', document.getElementById('timezone').value);
+  fetch('/api/system-config', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(d=>{ if (d.success) showStatus('Saved', true); else showStatus(d.error||'Save failed', false); })
+    .catch(e=>showStatus('Save failed: '+e.message, false));
+}
+
+function restartNtp(){
+  var p = new URLSearchParams();
+  p.append('timezone', document.getElementById('timezone').value);
+  fetch('/api/restart-ntp', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(d=>{ if (d.success) showStatus('NTP restarted', true); else showStatus(d.error||'Restart failed', false); })
+    .catch(e=>showStatus('Restart failed: '+e.message, false));
+}
+
 loadDashboard();
+</script>
+<script>
+function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }
+
+function loadPhones(){
+  fetch('/api/phones').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
+    var out = '';
+    if (d.phones && Array.isArray(d.phones)) {
+      for (var i=0;i<d.phones.length;i++) out += d.phones[i] + "\n";
+    }
+    var ta = document.getElementById('phones_text'); if(ta) ta.value = out;
+  }).catch(e=>{ if(e!=='auth') console.log('phones load failed', e); });
+}
+
+function savePhones(){
+  var txt = document.getElementById('phones_text').value;
+  fetch('/api/phones', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({phones: txt}) })
+    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
+    .catch(e=>showSmallStatus('phones_status','Save failed',false));
+}
+
+function loadNetworkCfg(){
+  fetch('/api/gateway-settings').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
+    var dh = !!d.use_dhcp;
+    var useEl = document.getElementById('net_useDhcp'); if (useEl) useEl.checked = dh;
+    var si = document.getElementById('net_staticIp'); if (si) si.value = d.static_ip || '';
+    var sm = document.getElementById('net_subnetMask'); if (sm) sm.value = d.subnet_mask || '';
+    var gw = document.getElementById('net_gatewayIp'); if (gw) gw.value = d.gateway_ip || '';
+    var tp = document.getElementById('net_tcpPort'); if (tp) tp.value = d.http_port || '';
+    // ensure static fields are enabled/disabled according to DHCP
+    try { toggleNetworkStaticFields(); } catch(e){}
+  }).catch(e=>{ if(e!=='auth') console.log('network load failed', e); });
+}
+
+function saveNetworkCfg(){
+  var useDhcp = document.getElementById('net_useDhcp').checked;
+  var staticIp = (document.getElementById('net_staticIp')||{}).value || '';
+  var subnet = (document.getElementById('net_subnetMask')||{}).value || '';
+  var gateway = (document.getElementById('net_gatewayIp')||{}).value || '';
+  var port = (document.getElementById('net_tcpPort')||{}).value || '';
+
+  if (!useDhcp) {
+    if (!isValidIPv4(staticIp) || !isValidIPv4(subnet) || !isValidIPv4(gateway)) {
+      showSmallStatus('net_status','Invalid IP address format', false);
+      return;
+    }
+  }
+  if (port && (isNaN(parseInt(port,10)) || parseInt(port,10) < 1)) { showSmallStatus('net_status','Invalid port', false); return; }
+
+  var p = new URLSearchParams();
+  p.append('use_dhcp', useDhcp ? '1' : '0');
+  p.append('static_ip', staticIp.trim());
+  p.append('subnet_mask', subnet.trim());
+  p.append('gateway_ip', gateway.trim());
+  p.append('http_port', port.trim());
+
+  fetch('/api/gateway-settings', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('net_status','Saved. Reboot to apply',true); else showSmallStatus('net_status',d.error||'Save failed',false); })
+    .catch(e=>showSmallStatus('net_status','Save failed',false));
+}
+
+function isValidIPv4(ip) {
+  if (!ip) return false;
+  var parts = ip.split('.'); if (parts.length !== 4) return false;
+  for (var i=0;i<4;i++){ var n = parseInt(parts[i],10); if (isNaN(n) || n<0 || n>255) return false; }
+  return true;
+}
+
+function toggleNetworkStaticFields(){
+  var dhcp = document.getElementById('net_useDhcp') && document.getElementById('net_useDhcp').checked;
+  ['net_staticIp','net_subnetMask','net_gatewayIp'].forEach(function(id){ var el = document.getElementById(id); if(el) el.disabled = dhcp; });
+}
+
+function sanitizeIpInput(el){ if(!el) return; var cleaned = el.value.replace(/[^0-9.]/g,''); var parts = cleaned.split('.'); if(parts.length>4) parts = parts.slice(0,4); for(var i=0;i<parts.length;i++){ if(parts[i].length>3) parts[i] = parts[i].slice(0,3); } el.value = parts.join('.'); }
+function sanitizeNumberInput(el){ if(!el) return; el.value = el.value.replace(/[^0-9]/g, ''); if(el.value==='') return; var v=parseInt(el.value,10); if(!Number.isFinite(v)) return; if(v<1) v=1; if(v>65535) v=65535; el.value=String(v); }
 </script>
 </body>
 </html>

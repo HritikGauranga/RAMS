@@ -35,6 +35,9 @@ void setup() {
     while (true) delay(1000);
   }
 
+  // Initialize shared state after filesystem is mounted
+  Shared_init();
+
   // MBmap CSV and Modbus RTU removed; keep gateway settings load
   Shared_loadGatewaySettings();
 

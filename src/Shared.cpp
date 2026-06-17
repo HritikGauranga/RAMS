@@ -109,6 +109,28 @@ void Shared_init() {
   if (stateMutex == nullptr)      stateMutex      = xSemaphoreCreateMutex();
   if (filesystemMutex == nullptr) filesystemMutex = xSemaphoreCreateMutex();
   if (spiMutex == nullptr)        spiMutex        = xSemaphoreCreateMutex();
+  // Load persisted phone list if present
+  if (Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
+    if (LittleFS.exists("/phones.conf")) {
+      File f = LittleFS.open("/phones.conf", "r");
+      if (f) {
+        PhoneList p = {0};
+        while (f.available() && p.count < MAX_PHONE_PER_LIST) {
+          String line = trimCopy(f.readStringUntil('\n'));
+          if (line.length() == 0) continue;
+          if (!isValidPhoneFormat(line)) continue;
+          line.toCharArray(p.numbers[p.count], PHONE_NUMBER_LENGTH);
+          ++p.count;
+        }
+        f.close();
+        if (Shared_lockState(pdMS_TO_TICKS(100))) {
+          phoneList = p;
+          Shared_unlockState();
+        }
+      }
+    }
+    Shared_unlockFileSystem();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +315,30 @@ bool Shared_writeInputRegister(size_t index, int16_t value) {
   if (index >= 4) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
   inputRegsCompat[index] = value;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_savePhoneList(const PhoneList &list) {
+  if (list.count > MAX_PHONE_PER_LIST) return false;
+  // Validate
+  for (size_t i = 0; i < list.count; ++i) {
+    String num = String(list.numbers[i]);
+    num.trim();
+    if (!isValidPhoneFormat(num)) return false;
+  }
+
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  File f = LittleFS.open("/phones.conf", "w");
+  if (!f) { Shared_unlockFileSystem(); return false; }
+  for (size_t i = 0; i < list.count; ++i) {
+    f.println(String(list.numbers[i]));
+  }
+  f.close();
+  Shared_unlockFileSystem();
+
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  phoneList = list;
   Shared_unlockState();
   return true;
 }

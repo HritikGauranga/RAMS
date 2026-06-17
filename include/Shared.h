@@ -42,6 +42,17 @@ struct PhoneList {
   char   numbers[MAX_PHONE_PER_LIST][PHONE_NUMBER_LENGTH];
 };
 
+struct Contact {
+  bool enabled;
+  char name[32];
+  char number[PHONE_NUMBER_LENGTH];
+};
+
+struct ContactList {
+  size_t count;
+  Contact items[MAX_PHONE_PER_LIST];
+};
+
 struct DigitalInputConfig {
   bool enabled;
   bool normallyClosed; // true if NC
@@ -106,6 +117,14 @@ bool Shared_saveGatewaySettings(const GatewaySettings &settings);
 // Phone list access
 bool Shared_getPhoneList(PhoneList &out);
 bool Shared_savePhoneList(const PhoneList &list);
+
+// New contact-based API: authorized contacts (can send commands)
+bool Shared_getAuthorizedContacts(ContactList &out);
+bool Shared_saveAuthorizedContacts(const ContactList &list);
+
+// Event recipients (receive event SMS)
+bool Shared_getRecipientContacts(ContactList &out);
+bool Shared_saveRecipientContacts(const ContactList &list);
 
 // Alarm result storage (per-input)
 bool Shared_writeAlarmResult(size_t index, int16_t value);

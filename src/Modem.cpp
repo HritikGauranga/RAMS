@@ -279,19 +279,20 @@ bool Modem_init() {
 }
 
 // ---------------------------------------------------------------------------
-// dispatchMessage
+// dispatchMessage - use recipient contacts only
 // ---------------------------------------------------------------------------
 static int16_t dispatchMessage(size_t inputIndex) {
-  PhoneList pl = {};
-  if (!Shared_getPhoneList(pl)) return STATUS_ERROR_CONFIG;
-  if (pl.count == 0) return STATUS_ERROR_EMPTY;
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return STATUS_ERROR_CONFIG;
+  if (rec.count == 0) return STATUS_ERROR_EMPTY;
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   uint8_t sentCount = 0;
   String msg = "Alarm on input " + String((unsigned)inputIndex + 1);
 
-  for (size_t i = 0; i < pl.count && i < MAX_PHONE_PER_LIST; ++i) {
-    String number = String(pl.numbers[i]);
+  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+    if (!rec.items[i].enabled) continue;
+    String number = String(rec.items[i].number);
     if (number.length() == 0) continue;
     String normalizedNumber;
     if (!normalizePhoneNumber(number, normalizedNumber)) {

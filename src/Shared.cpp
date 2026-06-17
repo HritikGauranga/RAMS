@@ -22,6 +22,8 @@ static float   analogInputs[ANALOG_INPUT_COUNT]   = {0.0f};
 static bool    relayStates[RELAY_OUTPUT_COUNT]    = {false, false};
 
 static PhoneList phoneList = {0};
+static ContactList authorizedContacts = {0};
+static ContactList recipientContacts = {0};
 
 static DigitalInputConfig digitalInputConfig[DIGITAL_INPUT_COUNT] = {};
 static AnalogInputConfig  analogInputConfig[ANALOG_INPUT_COUNT]  = {};
@@ -109,26 +111,108 @@ void Shared_init() {
   if (stateMutex == nullptr)      stateMutex      = xSemaphoreCreateMutex();
   if (filesystemMutex == nullptr) filesystemMutex = xSemaphoreCreateMutex();
   if (spiMutex == nullptr)        spiMutex        = xSemaphoreCreateMutex();
-  // Load persisted phone list if present
+  // Load persisted phone list / contacts if present. Prefer JSON contacts file.
   if (Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
+    // Migration: if old /phones.conf exists, load into recipients list
     if (LittleFS.exists("/phones.conf")) {
       File f = LittleFS.open("/phones.conf", "r");
       if (f) {
-        PhoneList p = {0};
-        while (f.available() && p.count < MAX_PHONE_PER_LIST) {
+        ContactList rec = {0};
+        while (f.available() && rec.count < MAX_PHONE_PER_LIST) {
           String line = trimCopy(f.readStringUntil('\n'));
           if (line.length() == 0) continue;
           if (!isValidPhoneFormat(line)) continue;
-          line.toCharArray(p.numbers[p.count], PHONE_NUMBER_LENGTH);
-          ++p.count;
+          Contact c = {};
+          c.enabled = true;
+          line.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+          // leave name empty
+          rec.items[rec.count] = c;
+          ++rec.count;
         }
         f.close();
         if (Shared_lockState(pdMS_TO_TICKS(100))) {
-          phoneList = p;
+          recipientContacts = rec;
           Shared_unlockState();
         }
       }
     }
+    // Try loading new contacts.json
+    if (LittleFS.exists("/contacts.json")) {
+      File f = LittleFS.open("/contacts.json", "r");
+      if (f) {
+        String json = f.readString();
+        f.close();
+        // Minimal JSON parsing to avoid adding a JSON library.
+        // Expecting: {"authorized":[{...}],"recipients":[{...}]}
+        auto extractArray = [&](const String &root, const String &name) {
+          ContactList list = {0};
+          int idx = root.indexOf('"' + name + '"');
+          if (idx < 0) return list;
+          int a = root.indexOf('[', idx);
+          if (a < 0) return list;
+          int b = root.indexOf(']', a);
+          if (b < 0) return list;
+          String arr = root.substring(a + 1, b);
+          int pos = 0;
+          while (pos < arr.length() && list.count < MAX_PHONE_PER_LIST) {
+            int objStart = arr.indexOf('{', pos);
+            if (objStart < 0) break;
+            int objEnd = arr.indexOf('}', objStart);
+            if (objEnd < 0) break;
+            String obj = arr.substring(objStart + 1, objEnd);
+            // parse fields: enabled, name, number
+            Contact c = {};
+            int enIdx = obj.indexOf("\"enabled\"");
+            if (enIdx >= 0) {
+              int colon = obj.indexOf(':', enIdx);
+              if (colon >= 0) {
+                String val = trimCopy(obj.substring(colon + 1));
+                if (val.startsWith("true")) c.enabled = true;
+                else c.enabled = false;
+              }
+            }
+            int nameIdx = obj.indexOf("\"name\"");
+            if (nameIdx >= 0) {
+              int colon = obj.indexOf(':', nameIdx);
+              if (colon >= 0) {
+                int q1 = obj.indexOf('"', colon + 1);
+                int q2 = obj.indexOf('"', q1 + 1);
+                if (q1 >= 0 && q2 >= 0) {
+                  String n = obj.substring(q1 + 1, q2);
+                  n.trim();
+                  n.toCharArray(c.name, sizeof(c.name));
+                }
+              }
+            }
+            int numIdx = obj.indexOf("\"number\"");
+            if (numIdx >= 0) {
+              int colon = obj.indexOf(':', numIdx);
+              if (colon >= 0) {
+                int q1 = obj.indexOf('"', colon + 1);
+                int q2 = obj.indexOf('"', q1 + 1);
+                if (q1 >= 0 && q2 >= 0) {
+                  String n = obj.substring(q1 + 1, q2);
+                  n.trim();
+                  if (isValidPhoneFormat(n)) n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+                }
+              }
+            }
+            list.items[list.count++] = c;
+            pos = objEnd + 1;
+          }
+          return list;
+        };
+
+        ContactList auth = extractArray(json, String("authorized"));
+        ContactList recs = extractArray(json, String("recipients"));
+        if (Shared_lockState(pdMS_TO_TICKS(100))) {
+          if (auth.count > 0) authorizedContacts = auth;
+          if (recs.count > 0) recipientContacts = recs;
+          Shared_unlockState();
+        }
+      }
+    }
+
     Shared_unlockFileSystem();
   }
 }
@@ -303,6 +387,20 @@ bool Shared_getPhoneList(PhoneList &out) {
   return true;
 }
 
+bool Shared_getAuthorizedContacts(ContactList &out) {
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  out = authorizedContacts;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_getRecipientContacts(ContactList &out) {
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  out = recipientContacts;
+  Shared_unlockState();
+  return true;
+}
+
 bool Shared_writeAlarmResult(size_t index, int16_t value) {
   if (index >= DIGITAL_INPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
@@ -339,6 +437,118 @@ bool Shared_savePhoneList(const PhoneList &list) {
 
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
   phoneList = list;
+  Shared_unlockState();
+  return true;
+}
+
+static String escapeJsonString(const String &s) {
+  String out = "";
+  for (size_t i = 0; i < s.length(); ++i) {
+    char c = s.charAt(i);
+    if (c == '"' || c == '\\') {
+      out += '\\'; out += c;
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+bool Shared_saveAuthorizedContacts(const ContactList &list) {
+  if (list.count > MAX_PHONE_PER_LIST) return false;
+  // Validate phone numbers
+  for (size_t i = 0; i < list.count; ++i) {
+    String num = String(list.items[i].number);
+    num.trim();
+    if (!isValidPhoneFormat(num)) return false;
+  }
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  // write combined contacts.json (merge with recipients if present)
+  File f = LittleFS.open("/contacts.json", "r");
+  String existing = "";
+  if (f) { existing = f.readString(); f.close(); }
+
+  ContactList other = {};
+  if (existing.length() > 0) {
+    // re-use simple parsing to extract recipients
+    int idx = existing.indexOf('"' + String("recipients") + '"');
+    if (idx >= 0) {
+      // reuse extract logic by writing a tiny wrapper
+      // For simplicity, keep recipients as current recipientContacts
+      other = recipientContacts;
+    }
+  } else {
+    other = recipientContacts;
+  }
+
+  File out = LittleFS.open("/contacts.json", "w");
+  if (!out) { Shared_unlockFileSystem(); return false; }
+  out.print("{");
+  out.print("\"authorized\":[");
+  for (size_t i = 0; i < list.count; ++i) {
+    if (i) out.print(',');
+    String name = escapeJsonString(String(list.items[i].name));
+    String num = escapeJsonString(String(list.items[i].number));
+    out.print("{\"enabled\":"); out.print(list.items[i].enabled ? "true" : "false");
+    out.print(",\"name\":\""); out.print(name); out.print("\"");
+    out.print(",\"number\":\""); out.print(num); out.print("\"}");
+  }
+  out.print("],\"recipients\":[");
+  for (size_t i = 0; i < other.count; ++i) {
+    if (i) out.print(',');
+    String name = escapeJsonString(String(other.items[i].name));
+    String num = escapeJsonString(String(other.items[i].number));
+    out.print("{\"enabled\":"); out.print(other.items[i].enabled ? "true" : "false");
+    out.print(",\"name\":\""); out.print(name); out.print("\"");
+    out.print(",\"number\":\""); out.print(num); out.print("\"}");
+  }
+  out.print("]}");
+  out.close();
+  Shared_unlockFileSystem();
+
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  authorizedContacts = list;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_saveRecipientContacts(const ContactList &list) {
+  if (list.count > MAX_PHONE_PER_LIST) return false;
+  for (size_t i = 0; i < list.count; ++i) {
+    String num = String(list.items[i].number);
+    num.trim();
+    if (!isValidPhoneFormat(num)) return false;
+  }
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  // write combined contacts.json (merge with authorized if present)
+  ContactList other = authorizedContacts;
+  File out = LittleFS.open("/contacts.json", "w");
+  if (!out) { Shared_unlockFileSystem(); return false; }
+  out.print("{");
+  out.print("\"authorized\":[");
+  for (size_t i = 0; i < other.count; ++i) {
+    if (i) out.print(',');
+    String name = escapeJsonString(String(other.items[i].name));
+    String num = escapeJsonString(String(other.items[i].number));
+    out.print("{\"enabled\":"); out.print(other.items[i].enabled ? "true" : "false");
+    out.print(",\"name\":\""); out.print(name); out.print("\"");
+    out.print(",\"number\":\""); out.print(num); out.print("\"}");
+  }
+  out.print("],\"recipients\":[");
+  for (size_t i = 0; i < list.count; ++i) {
+    if (i) out.print(',');
+    String name = escapeJsonString(String(list.items[i].name));
+    String num = escapeJsonString(String(list.items[i].number));
+    out.print("{\"enabled\":"); out.print(list.items[i].enabled ? "true" : "false");
+    out.print(",\"name\":\""); out.print(name); out.print("\"");
+    out.print(",\"number\":\""); out.print(num); out.print("\"}");
+  }
+  out.print("]}");
+  out.close();
+  Shared_unlockFileSystem();
+
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  recipientContacts = list;
   Shared_unlockState();
   return true;
 }

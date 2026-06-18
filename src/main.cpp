@@ -6,12 +6,10 @@
 
 #include "AP.h"
 #include "Modem.h"
-#include "RTU.h"
 #include "Shared.h"
 #include "TCP.h"
 
 namespace {
-  constexpr uint32_t RTU_TASK_STACK   = 4096;
   constexpr uint32_t TCP_TASK_STACK   = 6144;
   constexpr uint32_t MODEM_TASK_STACK = 8192;
   constexpr uint32_t AP_TASK_STACK    = 4096;
@@ -23,7 +21,6 @@ void setup() {
 
   Serial.println("\n=== Remote Alarm Monitoring System (RAMS) ===");
 
-  Shared_init();
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(AP_STATUS_LED_PIN, OUTPUT);
   pinMode(MODEM_INIT_STATUS_PIN, OUTPUT);
@@ -57,15 +54,10 @@ void setup() {
   }
 
   // ---------------------------------------------------------------------------
-  // Task layout — 4 tasks total:
-  //
-  //   Core 0: SmsTask  (priority 2)
-  //     Calls initModem() at startup (~15s), then scans edges and sends SMS.
-  //     Core 1 runs freely during modem init — no blocking effect on Modbus.
-  //
-  //   Core 1: RTUTask  (priority 3) — Modbus RTU, highest prio on core 1
-  //           TCPTask  (priority 2) — Modbus TCP
-  //           ApTask   (priority 1) — Wi-Fi AP config server, lowest prio
+  // Task layout
+  //   Core 0: SmsTask  (priority 2) — handles modem init and SMS dispatch
+  //   Core 1: TCPTask  (priority 2) — network / web UI
+  //           ApTask   (priority 1) — Wi‑Fi AP config server
   // ---------------------------------------------------------------------------
 
   xTaskCreatePinnedToCore(Modem_task,   "SmsTask",  MODEM_TASK_STACK, nullptr, 2, nullptr, 0); 

@@ -10,7 +10,7 @@ constexpr size_t RELAY_OUTPUT_COUNT  = 2;
 
 constexpr size_t MAX_PHONE_LIST      = 20; // total phone slots for device
 constexpr size_t PHONE_NUMBER_LENGTH = 20;
-constexpr size_t MAX_PHONE_PER_LIST  = 10;
+constexpr size_t MAX_PHONE_PER_LIST  = 5;
 
 enum RegisterStatus : int16_t {
   STATUS_IDLE           =  0,
@@ -37,10 +37,7 @@ constexpr size_t NETWORK_STATUS_REGISTER  = 3;
 // Compatibility helper (keeps Modem code working)
 bool Shared_writeInputRegister(size_t index, int16_t value);
 
-struct PhoneList {
-  size_t count;
-  char   numbers[MAX_PHONE_PER_LIST][PHONE_NUMBER_LENGTH];
-};
+// Legacy newline phone list removed in favor of Contact/ContactList
 
 struct Contact {
   bool enabled;
@@ -114,9 +111,7 @@ bool Shared_loadGatewaySettings();
 bool Shared_getGatewaySettings(GatewaySettings &settings);
 bool Shared_saveGatewaySettings(const GatewaySettings &settings);
 
-// Phone list access
-bool Shared_getPhoneList(PhoneList &out);
-bool Shared_savePhoneList(const PhoneList &list);
+// Legacy phone-list APIs removed. Use Contact-based APIs instead.
 
 // New contact-based API: authorized contacts (can send commands)
 bool Shared_getAuthorizedContacts(ContactList &out);

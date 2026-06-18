@@ -72,18 +72,21 @@ static String trimCopy(const String &value) {
 }
 
 static bool isValidPhoneFormat(const String &number) {
-  if (number.length() == 0) return true;
   String trimmed = number;
   trimmed.trim();
+  if (trimmed.length() == 0) return false;
+  if (trimmed.length() > PHONE_NUMBER_LENGTH - 1) return false;
   if (trimmed.charAt(0) == '+') {
-    if (trimmed.length() < 11 || trimmed.length() > 15) return false;
+    size_t digitCount = trimmed.length() - 1;
+    if (digitCount < 10 || digitCount > 15) return false;
     for (size_t i = 1; i < trimmed.length(); ++i) {
       char c = trimmed.charAt(i);
       if (c < '0' || c > '9') return false;
     }
     return true;
   } else {
-    if (trimmed.length() < 10 || trimmed.length() > 15) return false;
+    size_t digitCount = trimmed.length();
+    if (digitCount < 10 || digitCount > 15) return false;
     for (size_t i = 0; i < trimmed.length(); ++i) {
       char c = trimmed.charAt(i);
       if (c < '0' || c > '9') return false;
@@ -812,24 +815,27 @@ static void setupWebServerRoutes() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    // Expect body as JSON array of objects or urlencoded fields like 'contacts' with JSON
+    // Expect body as urlencoded param 'contacts' containing a JSON array.
     String body = "";
     if (request->hasParam("contacts", true)) body = request->getParam("contacts", true)->value();
-    else if (request->contentLength() > 0) {
-      // Attempt to read raw body
-      int len = request->contentLength();
-      AsyncWebServerRequest *r = request;
-      // Not all AsyncWebServer versions expose body directly; require client to post 'contacts' param
-    }
     if (body.length() == 0) { request->send(400, "application/json", "{\"error\":\"Missing contacts payload\"}"); return; }
-    // Simple parsing: expecting JSON array like [{"enabled":true,"name":"...","number":"..."},...]
+
+    // Parse all objects to count them. Enforce max and validate phone format server-side.
     ContactList cl = {};
     int pos = 0;
-    while (pos < body.length() && cl.count < MAX_PHONE_PER_LIST) {
+    int totalFound = 0;
+    while (true) {
       int objStart = body.indexOf('{', pos);
       if (objStart < 0) break;
       int objEnd = body.indexOf('}', objStart);
       if (objEnd < 0) break;
+      totalFound++;
+      if (totalFound > (int)MAX_PHONE_PER_LIST) {
+        String err = String("{\"error\":\"Too many contacts (max ") + String(MAX_PHONE_PER_LIST) + " )\"}";
+        request->send(400, "application/json", err);
+        return;
+      }
+
       String obj = body.substring(objStart + 1, objEnd);
       Contact c = {};
       int enIdx = obj.indexOf("\"enabled\"");
@@ -851,19 +857,40 @@ static void setupWebServerRoutes() {
         }
       }
       int numIdx = obj.indexOf("\"number\"");
-      if (numIdx >= 0) {
-        int colon = obj.indexOf(':', numIdx);
-        int q1 = obj.indexOf('"', colon + 1);
-        int q2 = obj.indexOf('"', q1 + 1);
-        if (q1 >= 0 && q2 >= 0) {
-          String n = obj.substring(q1 + 1, q2);
-          n.trim(); if (isValidPhoneFormat(n)) n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-        }
+      if (numIdx < 0) {
+        String err = String("{\"error\":\"Missing phone number field at contact ") + String(totalFound) + "\"}";
+        request->send(400, "application/json", err);
+        return;
       }
-      cl.items[cl.count++] = c;
+      int colon = obj.indexOf(':', numIdx);
+      int q1 = obj.indexOf('"', colon + 1);
+      int q2 = obj.indexOf('"', q1 + 1);
+      if (q1 < 0 || q2 < 0) {
+        String err = String("{\"error\":\"Missing phone number value at contact ") + String(totalFound) + "\"}";
+        request->send(400, "application/json", err);
+        return;
+      }
+      {
+        String n = obj.substring(q1 + 1, q2);
+        n.trim();
+        if (n.length() == 0) {
+          String err = String("{\"error\":\"Empty phone number at contact ") + String(totalFound) + "\"}";
+          request->send(400, "application/json", err);
+          return;
+        }
+        if (!isValidPhoneFormat(n)) {
+          String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}";
+          request->send(400, "application/json", err);
+          return;
+        }
+        n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+      }
+
+      if (cl.count < MAX_PHONE_PER_LIST) cl.items[cl.count++] = c;
       pos = objEnd + 1;
     }
-    if (!Shared_saveAuthorizedContacts(cl)) { request->send(400, "application/json", "{\"error\":\"Save failed\"}"); return; }
+
+    if (!Shared_saveAuthorizedContacts(cl)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
     request->send(200, "application/json", "{\"success\":true}");
   });
 
@@ -888,13 +915,21 @@ static void setupWebServerRoutes() {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     String body = request->hasParam("contacts", true) ? request->getParam("contacts", true)->value() : "";
     if (body.length() == 0) { request->send(400, "application/json", "{\"error\":\"Missing contacts payload\"}"); return; }
+
     ContactList cl = {};
     int pos = 0;
-    while (pos < body.length() && cl.count < MAX_PHONE_PER_LIST) {
+    int totalFound = 0;
+    while (true) {
       int objStart = body.indexOf('{', pos);
       if (objStart < 0) break;
       int objEnd = body.indexOf('}', objStart);
       if (objEnd < 0) break;
+      totalFound++;
+      if (totalFound > (int)MAX_PHONE_PER_LIST) {
+        String err = String("{\"error\":\"Too many contacts (max ") + String(MAX_PHONE_PER_LIST) + " )\"}";
+        request->send(400, "application/json", err);
+        return;
+      }
       String obj = body.substring(objStart + 1, objEnd);
       Contact c = {};
       int enIdx = obj.indexOf("\"enabled\"");
@@ -913,16 +948,30 @@ static void setupWebServerRoutes() {
         if (q1 >= 0 && q2 >= 0) { String n = obj.substring(q1 + 1, q2); n.trim(); n.toCharArray(c.name, sizeof(c.name)); }
       }
       int numIdx = obj.indexOf("\"number\"");
-      if (numIdx >= 0) {
-        int colon = obj.indexOf(':', numIdx);
-        int q1 = obj.indexOf('"', colon + 1);
-        int q2 = obj.indexOf('"', q1 + 1);
-        if (q1 >= 0 && q2 >= 0) { String n = obj.substring(q1 + 1, q2); n.trim(); if (isValidPhoneFormat(n)) n.toCharArray(c.number, PHONE_NUMBER_LENGTH); }
+      if (numIdx < 0) {
+        String err = String("{\"error\":\"Missing phone number field at contact ") + String(totalFound) + "\"}";
+        request->send(400, "application/json", err);
+        return;
       }
-      cl.items[cl.count++] = c;
+      int colon = obj.indexOf(':', numIdx);
+      int q1 = obj.indexOf('"', colon + 1);
+      int q2 = obj.indexOf('"', q1 + 1);
+      if (q1 < 0 || q2 < 0) {
+        String err = String("{\"error\":\"Missing phone number value at contact ") + String(totalFound) + "\"}";
+        request->send(400, "application/json", err);
+        return;
+      }
+      {
+        String n = obj.substring(q1 + 1, q2);
+        n.trim();
+        if (n.length() == 0) { String err = String("{\"error\":\"Empty phone number at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
+        if (!isValidPhoneFormat(n)) { String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
+        n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+      }
+      if (cl.count < MAX_PHONE_PER_LIST) cl.items[cl.count++] = c;
       pos = objEnd + 1;
     }
-    if (!Shared_saveRecipientContacts(cl)) { request->send(400, "application/json", "{\"error\":\"Save failed\"}"); return; }
+    if (!Shared_saveRecipientContacts(cl)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
     request->send(200, "application/json", "{\"success\":true}");
   });
 
@@ -1115,7 +1164,7 @@ static String htmlPage() {
         <li data-tab="digital">Digital Inputs</li>
         <li data-tab="analog">Analog Inputs</li>
         <li data-tab="relays">Relay Outputs</li>
-        <li data-tab="alarms">Alarm Management</li>
+        <!-- Alarm Management removed -->
         <li data-tab="phones">Contact Config</li>
         <li data-tab="network">Network Configuration</li>
         <li data-tab="sysconfig">System Config</li>
@@ -1153,7 +1202,7 @@ static String htmlPage() {
       <div id="digital" class="tab" style="display:none"><div class="panel"><h2>Digital Inputs</h2><div class="subtitle">Configure and view 4 digital inputs here (placeholder).</div></div></div>
       <div id="analog" class="tab" style="display:none"><div class="panel"><h2>Analog Inputs</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
       <div id="relays" class="tab" style="display:none"><div class="panel"><h2>Relay Outputs</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
-      <div id="alarms" class="tab" style="display:none"><div class="panel"><h2>Alarm Management</h2><div class="subtitle">Alarm configuration and TTA/TTR (placeholder).</div></div></div>
+      <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
           <h2>Contact Configuration</h2>
@@ -1343,6 +1392,7 @@ loadDashboard();
 </script>
 <script>
 function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }
+const MAX_CONTACTS = 5;
 
 function loadPhones(){
   // Load both authorized and recipient contacts
@@ -1378,6 +1428,10 @@ function saveContacts(){
   for (var i=0;i<authArr.length;i++) if(!phoneValid(authArr[i].number)){ showSmallStatus('phones_status','Invalid phone in authorized list',false); return; }
   for (var i=0;i<recArr.length;i++) if(!phoneValid(recArr[i].number)){ showSmallStatus('phones_status','Invalid phone in recipients list',false); return; }
 
+  // Enforce max contacts per list
+  if (authArr.length > MAX_CONTACTS) { showSmallStatus('phones_status','Authorized list limited to ' + MAX_CONTACTS + ' entries', false); return; }
+  if (recArr.length > MAX_CONTACTS) { showSmallStatus('phones_status','Recipients list limited to ' + MAX_CONTACTS + ' entries', false); return; }
+
   var p1 = new URLSearchParams(); p1.append('contacts', JSON.stringify(authArr));
   fetch('/api/contacts/authorized', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p1.toString() })
     .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Authorized saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
@@ -1392,7 +1446,8 @@ function saveContacts(){
 function renderContactList(containerId, arr, isAuth){
   var el = document.getElementById(containerId); if(!el) return;
   el.innerHTML = '';
-  arr.forEach(function(item, idx){
+  for (var idx = 0; idx < arr.length && idx < MAX_CONTACTS; idx++) {
+    var item = arr[idx];
     var row = document.createElement('div'); row.className = 'contact-row';
     row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0';
     var chk = document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=!!item.enabled;
@@ -1402,11 +1457,11 @@ function renderContactList(containerId, arr, isAuth){
     var del = document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick = function(){ row.remove(); };
     row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del);
     el.appendChild(row);
-  });
+  }
 }
 
-function addAuthContact(){ var el=document.getElementById('auth_list'); if(!el) return; renderContactListAppend(el); }
-function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; renderContactListAppend(el); }
+function addAuthContact(){ var el=document.getElementById('auth_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
+function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
 function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
 
 function loadNetworkCfg(){

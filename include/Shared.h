@@ -56,6 +56,11 @@ struct DigitalInputConfig {
   uint16_t tta_ms; // time to alarm
   uint16_t ttr_ms; // time to return
   char name[32];
+  bool alarm_sms_enabled;
+  bool return_sms_enabled;
+  char alarm_message[64];
+  char return_message[64];
+  uint8_t selected_contacts; // bitmask for selected contact recipients
 };
 
 struct AnalogInputConfig {
@@ -132,6 +137,7 @@ bool Shared_setRelayState(size_t index, bool on);
 
 // Input/Output Configuration access
 bool Shared_getDigitalInputConfig(size_t index, DigitalInputConfig &out);
+bool Shared_saveDigitalInputConfig(size_t index, const DigitalInputConfig &cfg);
 bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out);
 bool Shared_getRelayConfig(size_t index, RelayConfig &out);
 

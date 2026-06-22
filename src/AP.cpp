@@ -1083,6 +1083,98 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", body);
   });
 
+  // Digital Input Configuration endpoints
+  server->on("/api/digital-input-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    String body = "[";
+    for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+      if (i) body += ",";
+      DigitalInputConfig cfg = {};
+      Shared_getDigitalInputConfig(i, cfg);
+      body += "{";
+      body += "\"index\":" + String(i) + ",";
+      body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
+      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
+      body += "\"normally_closed\":" + String(cfg.normallyClosed ? "true" : "false") + ",";
+      body += "\"tta_ms\":" + String(cfg.tta_ms) + ",";
+      body += "\"ttr_ms\":" + String(cfg.ttr_ms) + ",";
+      body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
+      body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
+      body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
+      body += "\"return_message\":\"" + escapeJson(String(cfg.return_message)) + "\",";
+      body += "\"selected_contacts\":" + String(cfg.selected_contacts);
+      body += "}";
+    }
+    body += "]";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/digital-input-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    // Expect index as parameter
+    if (!request->hasParam("index", true)) {
+      request->send(400, "application/json", "{\"error\":\"Missing index parameter\"}");
+      return;
+    }
+
+    size_t idx = request->getParam("index", true)->value().toInt();
+    if (idx >= DIGITAL_INPUT_COUNT) {
+      request->send(400, "application/json", "{\"error\":\"Invalid index\"}");
+      return;
+    }
+
+    DigitalInputConfig cfg = {};
+    Shared_getDigitalInputConfig(idx, cfg);
+
+    // Update fields from POST parameters
+    if (request->hasParam("enabled", true)) cfg.enabled = (request->getParam("enabled", true)->value() == "1");
+    if (request->hasParam("normally_closed", true)) cfg.normallyClosed = (request->getParam("normally_closed", true)->value() == "1");
+    if (request->hasParam("name", true)) {
+      String name = request->getParam("name", true)->value();
+      strncpy(cfg.name, name.c_str(), sizeof(cfg.name) - 1);
+      cfg.name[sizeof(cfg.name) - 1] = '\0';
+    }
+    if (request->hasParam("tta_ms", true)) {
+      int val = request->getParam("tta_ms", true)->value().toInt();
+      cfg.tta_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+    }
+    if (request->hasParam("ttr_ms", true)) {
+      int val = request->getParam("ttr_ms", true)->value().toInt();
+      cfg.ttr_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+    }
+    if (request->hasParam("alarm_sms_enabled", true)) cfg.alarm_sms_enabled = (request->getParam("alarm_sms_enabled", true)->value() == "1");
+    if (request->hasParam("return_sms_enabled", true)) cfg.return_sms_enabled = (request->getParam("return_sms_enabled", true)->value() == "1");
+    if (request->hasParam("alarm_message", true)) {
+      String msg = request->getParam("alarm_message", true)->value();
+      strncpy(cfg.alarm_message, msg.c_str(), sizeof(cfg.alarm_message) - 1);
+      cfg.alarm_message[sizeof(cfg.alarm_message) - 1] = '\0';
+    }
+    if (request->hasParam("return_message", true)) {
+      String msg = request->getParam("return_message", true)->value();
+      strncpy(cfg.return_message, msg.c_str(), sizeof(cfg.return_message) - 1);
+      cfg.return_message[sizeof(cfg.return_message) - 1] = '\0';
+    }
+    if (request->hasParam("selected_contacts", true)) {
+      int val = request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = (uint8_t)(val & 0xFF);
+    }
+
+    if (!Shared_saveDigitalInputConfig(idx, cfg)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
@@ -1322,7 +1414,101 @@ static String htmlPage() {
         </div>
       </div>
 
-      <div id="digital" class="tab" style="display:none"><div class="panel"><h2>DI Config</h2><div class="subtitle">Configure and view 4 digital inputs here (placeholder).</div></div></div>
+      <div id="digital" class="tab" style="display:none">
+        <div class="panel">
+          <h2>Digital Input Configuration</h2>
+          <div id="di_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
+          
+          <!-- Selector Section -->
+          <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <label style="font-weight:600;font-size:14px;white-space:nowrap">Select Digital Input</label>
+              <select id="di_selector" onchange="switchDI(this.value)" style="padding:10px 12px;font-size:14px;width:120px;border:1px solid #ccc;border-radius:4px;background-color:#fff;cursor:pointer">
+                <option value="0">DI1</option>
+                <option value="1">DI2</option>
+                <option value="2">DI3</option>
+                <option value="3">DI4</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="checkbox" id="di_enabled" style="width:18px;height:18px;cursor:pointer">
+              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
+            </div>
+          </div>
+          
+          <div id="di_form_container" style="display:none">
+            <form id="di_form">
+              <!-- Basic Settings Section -->
+              <div style="margin-bottom:24px">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
+                    <input type="text" id="di_name" placeholder="e.g. Main Door" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
+                    <select id="di_type" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
+                      <option value="0">Normally Open (NO)</option>
+                      <option value="1">Normally Closed (NC)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Timing Settings Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Timing Configuration</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Alarm (seconds)</label>
+                    <input type="number" id="di_tta" min="1" max="65535" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Duration before triggering alarm (1-65535s)</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Return (seconds)</label>
+                    <input type="number" id="di_ttr" min="1" max="65535" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Duration after alarm to return (1-65535s)</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- SMS Notification Settings Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SMS Notifications</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="di_alarm_sms" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm SMS</label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="di_return_sms" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return SMS</label>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr;gap:14px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
+                    <input type="text" id="di_alarm_msg" placeholder="Message when alarm occurs" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
+                    <input type="text" id="di_return_msg" placeholder="Message when alarm clears" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Button -->
+              <div style="display:flex;gap:10px;margin-top:28px">
+                <button type="button" class="btn primary" onclick="saveDIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
+              </div>
+            </form>
+          </div>
+          <div style="text-align:center;padding:20px;color:#999" id="di_loading">Loading Digital Input configurations...</div>
+        </div>
+      </div>
       <div id="analog" class="tab" style="display:none"><div class="panel"><h2>AI Config</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
       <div id="relays" class="tab" style="display:none"><div class="panel"><h2>DO Config</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
       <!-- Alarm Management tab removed -->
@@ -1438,6 +1624,7 @@ document.getElementById('nav').addEventListener('click', function(e){
   li.classList.add('active');
   document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
   var el = document.getElementById(tab); if(el) el.style.display='block';
+  if (tab === 'digital') loadDIConfig();
   if (tab === 'sysconfig') loadSystemConfig();
   if (tab === 'phones') loadPhones();
   if (tab === 'network') loadNetworkCfg();
@@ -1502,6 +1689,73 @@ function loadDashboard(){
     var nc = document.getElementById('netcfg'); if(nc) nc.textContent = '';
   }).catch(e=>{ if(e !== 'auth') console.log('dashboard load failed', e); });
 }
+
+var di_configs = [];
+
+function loadDIConfig(){
+  fetch('/api/digital-input-config').then(r=>{
+    if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(configs=>{
+    di_configs = configs;
+    document.getElementById('di_loading').style.display = 'none';
+    document.getElementById('di_form_container').style.display = 'block';
+    switchDI(0);
+  }).catch(e=>{ if(e !== 'auth') console.log('di config load failed', e); });
+}
+
+function switchDI(index){
+  if(!di_configs || di_configs.length === 0) return;
+  var cfg = di_configs[index];
+  document.getElementById('di_enabled').checked = cfg.enabled;
+  document.getElementById('di_name').value = cfg.name || '';
+  document.getElementById('di_type').value = cfg.normally_closed ? '1' : '0';
+  document.getElementById('di_tta').value = cfg.tta_ms;
+  document.getElementById('di_ttr').value = cfg.ttr_ms;
+  document.getElementById('di_alarm_sms').checked = cfg.alarm_sms_enabled;
+  document.getElementById('di_return_sms').checked = cfg.return_sms_enabled;
+  document.getElementById('di_alarm_msg').value = cfg.alarm_message || '';
+  document.getElementById('di_return_msg').value = cfg.return_message || '';
+  window.current_di_index = index;
+}
+
+function saveDIConfig(){
+  var index = window.current_di_index || 0;
+  var form_data = new FormData();
+  form_data.append('index', index);
+  form_data.append('enabled', document.getElementById('di_enabled').checked ? '1' : '0');
+  form_data.append('name', document.getElementById('di_name').value.trim());
+  form_data.append('normally_closed', document.getElementById('di_type').value === '1' ? '1' : '0');
+  form_data.append('tta_ms', document.getElementById('di_tta').value);
+  form_data.append('ttr_ms', document.getElementById('di_ttr').value);
+  form_data.append('alarm_sms_enabled', document.getElementById('di_alarm_sms').checked ? '1' : '0');
+  form_data.append('return_sms_enabled', document.getElementById('di_return_sms').checked ? '1' : '0');
+  form_data.append('alarm_message', document.getElementById('di_alarm_msg').value.trim());
+  form_data.append('return_message', document.getElementById('di_return_msg').value.trim());
+  form_data.append('selected_contacts', 0);
+  
+  var status_el = document.getElementById('di_status');
+  fetch('/api/digital-input-config', { method:'POST', body:form_data })
+    .then(r=>r.json())
+    .then(d=>{ 
+      if(d.success) {
+        di_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),normally_closed:form_data.get('normally_closed')==='1',tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:0};
+        status_el.textContent = 'DI' + (index+1) + ' configuration saved successfully!';
+        status_el.style.color = 'green';
+      } else {
+        status_el.textContent = 'Error: ' + (d.error || 'Save failed');
+        status_el.style.color = 'red';
+      }
+      status_el.style.display = 'block';
+      setTimeout(function(){ status_el.style.display = 'none'; }, 4000);
+    })
+    .catch(e=>{
+      status_el.textContent = 'Error: ' + e.message;
+      status_el.style.color = 'red';
+      status_el.style.display = 'block';
+    });
+}
+
 function showStatus(msg, ok) {
   var el = document.getElementById('sys_status'); if (!el) return;
   el.textContent = msg; el.style.display = 'block'; el.style.color = ok ? 'green' : 'red';

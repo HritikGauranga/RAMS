@@ -317,7 +317,7 @@ void Shared_setAPModeActive(bool active) {
 uint16_t encodeSignedRegister(int16_t value) {
   return static_cast<uint16_t>(value);
 }
-  
+
 // ---------------------------------------------------------------------------
 // Input/Output Configuration access
 // ---------------------------------------------------------------------------
@@ -325,6 +325,14 @@ bool Shared_getDigitalInputConfig(size_t index, DigitalInputConfig &out) {
   if (index >= DIGITAL_INPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
   out = digitalInputConfig[index];
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_saveDigitalInputConfig(size_t index, const DigitalInputConfig &cfg) {
+  if (index >= DIGITAL_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  digitalInputConfig[index] = cfg;
   Shared_unlockState();
   return true;
 }

@@ -28,6 +28,20 @@ static DigitalInputConfig digitalInputConfig[DIGITAL_INPUT_COUNT] = {};
 static AnalogInputConfig  analogInputConfig[ANALOG_INPUT_COUNT]  = {};
 static RelayConfig        relayConfig[RELAY_OUTPUT_COUNT]        = {};
 
+static const char *IO_CONFIG_PATH = "/io_config.bin";
+
+struct IOConfigStore {
+  char magic[4];
+  uint16_t version;
+  DigitalInputConfig digital[DIGITAL_INPUT_COUNT];
+  AnalogInputConfig analog[ANALOG_INPUT_COUNT];
+  RelayConfig relay[RELAY_OUTPUT_COUNT];
+};
+
+static constexpr uint16_t IO_CONFIG_VERSION = 1;
+static bool loadIOConfigFromFile();
+static bool saveIOConfigToFile();
+
 static GatewaySettings gatewaySettings = {
   true,            // useDhcp
   {192,168,8,200}, // staticIp
@@ -105,6 +119,79 @@ static String ipToString(const uint8_t ip[4]) {
   return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
 }
 
+static bool isValidIOConfigStore(const IOConfigStore &store) {
+  return store.magic[0] == 'I' &&
+         store.magic[1] == 'O' &&
+         store.magic[2] == 'C' &&
+         store.magic[3] == 'F' &&
+         store.version == IO_CONFIG_VERSION;
+}
+
+static bool loadIOConfigFromFile() {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  if (!LittleFS.exists(IO_CONFIG_PATH)) {
+    Shared_unlockFileSystem();
+    return true;
+  }
+
+  File f = LittleFS.open(IO_CONFIG_PATH, "r");
+  if (!f) {
+    Shared_unlockFileSystem();
+    return false;
+  }
+
+  IOConfigStore store = {};
+  size_t readLen = f.readBytes(reinterpret_cast<char *>(&store), sizeof(store));
+  f.close();
+  Shared_unlockFileSystem();
+
+  if (readLen != sizeof(store) || !isValidIOConfigStore(store)) {
+    Serial.println("[IOCFG] Ignoring invalid persisted IO config");
+    return false;
+  }
+
+  if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = store.digital[i];
+  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = store.analog[i];
+  for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) relayConfig[i] = store.relay[i];
+  Shared_unlockState();
+
+  Serial.println("[IOCFG] Loaded persisted IO config");
+  return true;
+}
+
+static bool saveIOConfigToFile() {
+  IOConfigStore store = {};
+  store.magic[0] = 'I';
+  store.magic[1] = 'O';
+  store.magic[2] = 'C';
+  store.magic[3] = 'F';
+  store.version = IO_CONFIG_VERSION;
+
+  if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) store.digital[i] = digitalInputConfig[i];
+  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) store.analog[i] = analogInputConfig[i];
+  for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) store.relay[i] = relayConfig[i];
+  Shared_unlockState();
+
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  File f = LittleFS.open(IO_CONFIG_PATH, "w");
+  if (!f) {
+    Shared_unlockFileSystem();
+    return false;
+  }
+
+  size_t written = f.write(reinterpret_cast<const uint8_t *>(&store), sizeof(store));
+  f.close();
+  Shared_unlockFileSystem();
+
+  if (written != sizeof(store)) {
+    Serial.println("[IOCFG] Failed to persist complete IO config");
+    return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
@@ -112,6 +199,9 @@ void Shared_init() {
   if (stateMutex == nullptr)      stateMutex      = xSemaphoreCreateMutex();
   if (filesystemMutex == nullptr) filesystemMutex = xSemaphoreCreateMutex();
   if (spiMutex == nullptr)        spiMutex        = xSemaphoreCreateMutex();
+
+  loadIOConfigFromFile();
+
   // Load persisted phone list / contacts if present. Prefer JSON contacts file.
   if (Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
     // Migration: if old /phones.conf exists, load into recipients list
@@ -334,7 +424,7 @@ bool Shared_saveDigitalInputConfig(size_t index, const DigitalInputConfig &cfg) 
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
   digitalInputConfig[index] = cfg;
   Shared_unlockState();
-  return true;
+  return saveIOConfigToFile();
 }
 
 bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out) {
@@ -350,7 +440,7 @@ bool Shared_saveAnalogInputConfig(size_t index, const AnalogInputConfig &cfg) {
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
   analogInputConfig[index] = cfg;
   Shared_unlockState();
-  return true;
+  return saveIOConfigToFile();
 }
 
 bool Shared_getRelayConfig(size_t index, RelayConfig &out) {

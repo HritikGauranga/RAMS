@@ -27,10 +27,17 @@ void setup() {
   digitalWrite(AP_STATUS_LED_PIN, LOW);
   digitalWrite(MODEM_INIT_STATUS_PIN, LOW);
 
-  if (!LittleFS.begin(true)) {
-    Serial.println("[ERROR] LittleFS mount failed — halting");
-    while (true) delay(1000);
+  // Mount LittleFS - try without format first, then format if needed
+  if (!LittleFS.begin(false)) {
+    Serial.println("[MAIN] LittleFS not formatted, formatting now...");
+    if (!LittleFS.begin(true)) {
+      Serial.println("[ERROR] LittleFS mount and format failed — halting");
+      while (true) delay(1000);
+    }
+    Serial.println("[MAIN] LittleFS formatted successfully");
   }
+  
+  Serial.println("[MAIN] LittleFS mounted successfully");
 
   Serial.printf("Used: %u\n", LittleFS.usedBytes());
   Serial.printf("Total: %u\n", LittleFS.totalBytes());

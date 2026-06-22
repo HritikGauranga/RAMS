@@ -350,12 +350,11 @@ static bool writeSerialNumberOnce(const String &serial, String &error) {
     }
   }
 
-  LittleFS.mkdir("/littlefs");
-
+  // Open/create serial file - LittleFS files are in root
   File out = LittleFS.open(SERIAL_FILE_PATH, "w");
   if (!out) {
     Shared_unlockFileSystem();
-    error = "Failed to open serial file";
+    error = "Failed to open serial file for writing";
     return false;
   }
   out.println(serial);
@@ -1848,81 +1847,85 @@ static const char *htmlPage() {
       <div id="relays" class="tab" style="display:none">
         <div class="panel">
           <h2>DO Config</h2>
-          <div class="subtitle">Control relay outputs and automation</div>
-          <div style="margin-top:20px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:6px">
-            <label style="font-weight:600;display:block;margin-bottom:10px;font-size:13px">Select Output</label>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-              <select id="do_selector" onchange="switchDO(parseInt(this.value))" style="padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;flex:1;min-width:100px;background-color:#fff">
+          <div id="do_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
+          
+          <!-- Selector Section -->
+          <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <label style="font-weight:600;font-size:14px;white-space:nowrap">Select Output</label>
+              <select id="do_selector" onchange="switchDO(parseInt(this.value))" style="padding:10px 12px;font-size:14px;width:120px;border:1px solid #ccc;border-radius:4px;background-color:#fff;cursor:pointer">
                 <option value="0">DO1</option>
                 <option value="1">DO2</option>
               </select>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
-                <input type="checkbox" id="do_enabled" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
-                <span style="font-weight:500">Enable</span>
-              </label>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="checkbox" id="do_enabled" style="width:18px;height:18px;cursor:pointer">
+              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Output</label>
             </div>
           </div>
-          <div id="do_status" style="display:none;padding:10px;margin-bottom:15px;border-radius:4px;font-size:13px;font-weight:500"></div>
           
-          <!-- Basic Settings Section -->
-          <div style="background:#e8f4f8;padding:14px;border-radius:6px;margin-bottom:15px">
-            <h3 style="margin:0 0 12px 0;color:#0066cc;font-size:14px;font-weight:600">Basic Settings</h3>
-            <div style="margin-bottom:12px">
-              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
-              <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-weight:500;display:block;margin-bottom:8px;font-size:13px">Default Power-Up State</label>
-              <div style="display:flex;gap:10px">
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-                  <input type="radio" name="do_powerup" value="0" onchange="saveDOConfig()" style="cursor:pointer"> OFF
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-                  <input type="radio" name="do_powerup" value="1" onchange="saveDOConfig()" style="cursor:pointer"> ON
-                </label>
+          <div id="do_form_container">
+            <form id="do_form">
+              <!-- Basic Settings Section -->
+              <div style="margin-bottom:24px">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
+                    <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Default Power-Up State</label>
+                    <select id="do_powerup" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
+                      <option value="0">OFF</option>
+                      <option value="1">ON</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Control Options Section -->
-          <div style="background:#fff3cd;padding:14px;border-radius:6px;margin-bottom:15px">
-            <h3 style="margin:0 0 12px 0;color:#cc6600;font-size:14px;font-weight:600">Control Options</h3>
-            <div style="margin-bottom:12px">
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
-                <input type="checkbox" id="do_sms_control" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
-                <span style="font-weight:500">Enable SMS Control</span>
-              </label>
-              <div style="font-size:12px;color:#666;margin-top:4px;margin-left:24px">Commands: DO1 ON, DO1 OFF, DO1 PULSE 30</div>
-            </div>
-            <div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
-                <input type="checkbox" id="do_alarm_control" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
-                <span style="font-weight:500">Enable Alarm Control</span>
-              </label>
-              <div style="font-size:12px;color:#666;margin-top:4px;margin-left:24px">Output activates when alarm triggers</div>
-            </div>
-          </div>
-
-          <!-- Alarm Source Section -->
-          <div style="background:#f0e6ff;padding:14px;border-radius:6px;margin-bottom:15px">
-            <h3 style="margin:0 0 12px 0;color:#7722cc;font-size:14px;font-weight:600">Alarm Source</h3>
-            <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm (if Alarm Control enabled)</label>
-            <select id="do_alarm_source" onchange="saveDOConfig()" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff">
-              <option value="0">None</option>
-              <option value="1">AI1 - High Level</option>
-              <option value="2">AI1 - Low Level</option>
-              <option value="3">AI2 - High Level</option>
-              <option value="4">AI2 - Low Level</option>
-              <option value="5">DI1 - Alarm</option>
-              <option value="6">DI2 - Alarm</option>
-              <option value="7">DI3 - Alarm</option>
-              <option value="8">DI4 - Alarm</option>
-            </select>
-          </div>
-
-          <!-- Save Button -->
-          <div style="margin-top:20px;display:flex;gap:10px">
-            <button onclick="saveDOConfig()" style="flex:1;padding:12px;background:#0066cc;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-size:14px">Save Configuration</button>
+              
+              <!-- Control Configuration Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Control Configuration</h3>
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="do_sms_control" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable SMS Control</label>
+                  </div>
+                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Allows remote control: DO1 ON, DO1 OFF, DO1 PULSE 30</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="do_alarm_control" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Alarm Control</label>
+                  </div>
+                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Output activates automatically when linked alarm triggers</div>
+                </div>
+              </div>
+              
+              <!-- Alarm Linking Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Linking</h3>
+                <div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm Source</label>
+                  <select id="do_alarm_source" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;cursor:pointer">
+                    <option value="0">None (Manual / SMS only)</option>
+                    <option value="1">AI1 - High Level Alarm</option>
+                    <option value="2">AI1 - Low Level Alarm</option>
+                    <option value="3">AI2 - High Level Alarm</option>
+                    <option value="4">AI2 - Low Level Alarm</option>
+                    <option value="5">DI1 - Digital Alarm</option>
+                    <option value="6">DI2 - Digital Alarm</option>
+                    <option value="7">DI3 - Digital Alarm</option>
+                    <option value="8">DI4 - Digital Alarm</option>
+                  </select>
+                  <div style="font-size:11px;color:#999;margin-top:4px">Select alarm to link (if Alarm Control enabled)</div>
+                </div>
+              </div>
+              
+              <!-- Save Button -->
+              <div style="margin-top:24px;display:flex;gap:12px">
+                <button type="button" onclick="saveDOConfig()" style="flex:1;padding:12px;background:#0066cc;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-size:14px">Save Configuration</button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -2345,6 +2348,10 @@ function loadDOConfig(){
     } else {
       switchDO(0);
     }
+    // Add change listener to enabled checkbox to trigger save
+    document.getElementById('do_enabled').addEventListener('change', function() {
+      saveDOConfig();
+    });
   }).catch(e=>{
     if(e === 'auth') return;
     console.error('Error loading DO config:', e);
@@ -2357,9 +2364,7 @@ function switchDO(index){
   if (!cfg) return;
   document.getElementById('do_enabled').checked = cfg.enabled;
   document.getElementById('do_name').value = cfg.name || '';
-  document.querySelectorAll('input[name="do_powerup"]').forEach(function(r) { r.checked = false; });
-  var powerup = document.querySelector('input[name="do_powerup"][value="' + (cfg.default_power_up_state ? '1' : '0') + '"]');
-  if (powerup) powerup.checked = true;
+  document.getElementById('do_powerup').value = cfg.default_power_up_state ? '1' : '0';
   document.getElementById('do_sms_control').checked = cfg.sms_control_enabled;
   document.getElementById('do_alarm_control').checked = cfg.alarm_control_enabled;
   document.getElementById('do_alarm_source').value = cfg.alarm_source || 0;
@@ -2373,8 +2378,7 @@ function saveDOConfig(){
   form_data.append('index', index);
   form_data.append('enabled', document.getElementById('do_enabled').checked ? '1' : '0');
   form_data.append('name', document.getElementById('do_name').value.trim());
-  var powerupEl = document.querySelector('input[name="do_powerup"]:checked');
-  form_data.append('default_power_up_state', powerupEl ? powerupEl.value : '0');
+  form_data.append('default_power_up_state', document.getElementById('do_powerup').value);
   form_data.append('sms_control_enabled', document.getElementById('do_sms_control').checked ? '1' : '0');
   form_data.append('alarm_control_enabled', document.getElementById('do_alarm_control').checked ? '1' : '0');
   form_data.append('alarm_source', document.getElementById('do_alarm_source').value);

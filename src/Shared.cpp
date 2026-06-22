@@ -131,22 +131,36 @@ static bool loadIOConfigFromFile() {
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
   if (!LittleFS.exists(IO_CONFIG_PATH)) {
     Shared_unlockFileSystem();
+    Serial.println("[IOCFG] No persisted config file, using defaults");
     return true;
   }
 
   File f = LittleFS.open(IO_CONFIG_PATH, "r");
   if (!f) {
     Shared_unlockFileSystem();
+    Serial.println("[IOCFG] Failed to open config file for reading");
     return false;
   }
+
+  size_t fileSize = f.size();
+  Serial.printf("[IOCFG] Config file size: %u bytes (expected: %u bytes)\n", fileSize, (unsigned int)sizeof(IOConfigStore));
 
   IOConfigStore store = {};
   size_t readLen = f.readBytes(reinterpret_cast<char *>(&store), sizeof(store));
   f.close();
   Shared_unlockFileSystem();
 
-  if (readLen != sizeof(store) || !isValidIOConfigStore(store)) {
-    Serial.println("[IOCFG] Ignoring invalid persisted IO config");
+  Serial.printf("[IOCFG] Read %u bytes from file\n", readLen);
+
+  if (readLen != sizeof(store)) {
+    Serial.printf("[IOCFG] Size mismatch: read %u bytes but expected %u bytes\n", readLen, (unsigned int)sizeof(store));
+    return false;
+  }
+
+  if (!isValidIOConfigStore(store)) {
+    Serial.printf("[IOCFG] Invalid magic or version - Magic: %c%c%c%c, Version: %u (expected %u)\n", 
+                  store.magic[0], store.magic[1], store.magic[2], store.magic[3], 
+                  store.version, IO_CONFIG_VERSION);
     return false;
   }
 
@@ -174,10 +188,15 @@ static bool saveIOConfigToFile() {
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) store.relay[i] = relayConfig[i];
   Shared_unlockState();
 
-  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
+    Serial.println("[IOCFG] Failed to acquire filesystem lock for writing");
+    return false;
+  }
+
   File f = LittleFS.open(IO_CONFIG_PATH, "w");
   if (!f) {
     Shared_unlockFileSystem();
+    Serial.println("[IOCFG] Failed to open config file for writing");
     return false;
   }
 
@@ -186,9 +205,11 @@ static bool saveIOConfigToFile() {
   Shared_unlockFileSystem();
 
   if (written != sizeof(store)) {
-    Serial.println("[IOCFG] Failed to persist complete IO config");
+    Serial.printf("[IOCFG] Write incomplete: wrote %u bytes but expected %u bytes\n", written, (unsigned int)sizeof(store));
     return false;
   }
+
+  Serial.printf("[IOCFG] Successfully saved IO config (%u bytes) to %s\n", (unsigned int)sizeof(store), IO_CONFIG_PATH);
   return true;
 }
 
@@ -196,6 +217,7 @@ static bool saveIOConfigToFile() {
 // Lifecycle
 // ---------------------------------------------------------------------------
 void Shared_init() {
+  Serial.println("[SHARED] Initializing Shared state...");
   if (stateMutex == nullptr)      stateMutex      = xSemaphoreCreateMutex();
   if (filesystemMutex == nullptr) filesystemMutex = xSemaphoreCreateMutex();
   if (spiMutex == nullptr)        spiMutex        = xSemaphoreCreateMutex();

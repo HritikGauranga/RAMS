@@ -1023,6 +1023,66 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
+  // Dashboard IO Status endpoint: returns digital inputs, analog inputs, and relay outputs with current values and configs
+  server->on("/api/io-status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    SystemSnapshot snapshot = Shared_getSnapshot();
+    
+    String body = "{";
+    body += "\"digital_inputs\":[";
+    
+    // Digital Inputs
+    for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+      if (i) body += ",";
+      DigitalInputConfig di = {};
+      Shared_getDigitalInputConfig(i, di);
+      body += "{";
+      body += "\"index\":" + String(i) + ",";
+      body += "\"name\":\"" + escapeJson(String(di.name)) + "\",";
+      body += "\"value\":" + String(snapshot.digitalInputs[i]) + ",";
+      body += "\"enabled\":" + String(di.enabled ? "true" : "false");
+      body += "}";
+    }
+    body += "],";
+    
+    body += "\"analog_inputs\":[";
+    // Analog Inputs
+    for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
+      if (i) body += ",";
+      AnalogInputConfig ai = {};
+      Shared_getAnalogInputConfig(i, ai);
+      body += "{";
+      body += "\"index\":" + String(i) + ",";
+      body += "\"name\":\"" + escapeJson(String(ai.name)) + "\",";
+      body += "\"value\":" + String(snapshot.analogInputs[i], 2) + ",";
+      body += "\"enabled\":" + String(ai.enabled ? "true" : "false");
+      body += "}";
+    }
+    body += "],";
+    
+    body += "\"relay_outputs\":[";
+    // Relay Outputs
+    for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+      if (i) body += ",";
+      RelayConfig relay = {};
+      Shared_getRelayConfig(i, relay);
+      body += "{";
+      body += "\"index\":" + String(i) + ",";
+      body += "\"name\":\"" + escapeJson(String(relay.name)) + "\",";
+      body += "\"state\":" + String(snapshot.relayState[i] ? "true" : "false") + ",";
+      body += "\"enabled\":" + String(relay.enabled ? "true" : "false");
+      body += "}";
+    }
+    body += "]";
+    body += "}";
+    
+    request->send(200, "application/json", body);
+  });
+
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
@@ -1172,9 +1232,9 @@ static String htmlPage() {
       <div class="brand">RAMS</div>
       <ul class="nav" id="nav">
         <li data-tab="dashboard" class="active">Dashboard</li>
-        <li data-tab="digital">Digital Inputs</li>
-        <li data-tab="analog">Analog Inputs</li>
-        <li data-tab="relays">Relay Outputs</li>
+        <li data-tab="digital">DI Config</li>
+        <li data-tab="analog">AI Config</li>
+        <li data-tab="relays">DO Config</li>
         <!-- Alarm Management removed -->
         <li data-tab="phones">Contact Config</li>
         <li data-tab="network">Network Configuration</li>
@@ -1195,23 +1255,76 @@ static String htmlPage() {
 
       <div id="dashboard" class="tab active">
         <div class="panel">
+          <h2 style="margin-bottom:15px">System Information</h2>
           <div class="grid" id="dashGrid">
             <div class="stat"><div class="label">Serial Number</div><div class="value" id="s_serial">Loading...</div></div>
-            <div class="stat"><div class="label">Login User Name</div><div class="value" id="s_login">Loading...</div></div>
+            <div class="stat"><div class="label">Site & Location</div><div class="value" id="s_site">Loading...</div></div>
             <div class="stat"><div class="label">Wi-Fi AP IP</div><div class="value" id="s_apip">Loading...</div></div>
             <div class="stat"><div class="label">Ethernet IP</div><div class="value" id="s_ethip">Loading...</div></div>
             <div class="stat"><div class="label">DHCP Mode</div><div class="value" id="s_dhcp">Loading...</div></div>
             <div class="stat"><div class="label">Static IP</div><div class="value" id="s_static">Loading...</div></div>
-            <div class="stat"><div class="label">Subnet Mask</div><div class="value" id="s_subnet">Loading...</div></div>
-            <div class="stat"><div class="label">Gateway IP</div><div class="value" id="s_gateway">Loading...</div></div>
-            <div class="stat"><div class="label">Firmware</div><div class="value" id="s_fw">-</div></div>
+          </div>
+        </div>
+        
+        <div class="panel" style="margin-top:20px">
+          <h2 style="margin-bottom:15px">Input & Output Status</h2>
+          
+          <div style="margin-bottom:20px">
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Digital Inputs</h3>
+            <table style="width:100%;border-collapse:collapse">
+              <thead style="background:#f9fafb">
+                <tr>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Input</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                </tr>
+              </thead>
+              <tbody id="di-table">
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-bottom:20px">
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Analog Inputs</h3>
+            <table style="width:100%;border-collapse:collapse">
+              <thead style="background:#f9fafb">
+                <tr>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Input</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                </tr>
+              </thead>
+              <tbody id="ai-table">
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Relay Outputs</h3>
+            <table style="width:100%;border-collapse:collapse">
+              <thead style="background:#f9fafb">
+                <tr>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Output</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">State</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                </tr>
+              </thead>
+              <tbody id="relay-table">
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <div id="digital" class="tab" style="display:none"><div class="panel"><h2>Digital Inputs</h2><div class="subtitle">Configure and view 4 digital inputs here (placeholder).</div></div></div>
-      <div id="analog" class="tab" style="display:none"><div class="panel"><h2>Analog Inputs</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
-      <div id="relays" class="tab" style="display:none"><div class="panel"><h2>Relay Outputs</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
+      <div id="digital" class="tab" style="display:none"><div class="panel"><h2>DI Config</h2><div class="subtitle">Configure and view 4 digital inputs here (placeholder).</div></div></div>
+      <div id="analog" class="tab" style="display:none"><div class="panel"><h2>AI Config</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
+      <div id="relays" class="tab" style="display:none"><div class="panel"><h2>DO Config</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
       <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
@@ -1339,14 +1452,52 @@ function loadDashboard(){
     return r.json();
   }).then(d=>{
     setStat('s_serial', d.serial_number || 'Not Set');
-    setStat('s_login', d.login_user || 'Admin');
     setStat('s_apip', d.ap_ip || '-');
     setStat('s_ethip', d.eth_ip || '-');
     setStat('s_dhcp', d.use_dhcp ? 'Enabled' : 'Disabled');
     setStat('s_static', d.static_ip || '-');
-    setStat('s_subnet', d.subnet_mask || '-');
-    setStat('s_gateway', d.gateway_ip || '-');
-    setStat('s_fw', d.fw_build || '-');
+    
+    // Load system config for site/location
+    fetch('/api/system-config').then(r=>r.json()).then(cfg=>{
+      var site = cfg.site_name || '-';
+      var addr = cfg.site_address ? ' (' + cfg.site_address + ')' : '';
+      setStat('s_site', site + addr);
+    }).catch(e=>console.log('site load failed', e));
+    
+    // Load IO status
+    fetch('/api/io-status').then(r=>r.json()).then(io=>{
+      // Digital Inputs
+      var diHtml = '';
+      if(io.digital_inputs && io.digital_inputs.length > 0) {
+        io.digital_inputs.forEach((di, idx) => {
+          var status = di.value === 0 ? 'Normal' : 'Alarm';
+          var badge = di.value === 0 ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
+          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + di.value + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
+        });
+      }
+      document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      
+      // Analog Inputs
+      var aiHtml = '';
+      if(io.analog_inputs && io.analog_inputs.length > 0) {
+        io.analog_inputs.forEach((ai, idx) => {
+          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + ai.value.toFixed(2) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td></tr>';
+        });
+      }
+      document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      
+      // Relay Outputs
+      var relayHtml = '';
+      if(io.relay_outputs && io.relay_outputs.length > 0) {
+        io.relay_outputs.forEach((relay, idx) => {
+          var state = relay.state ? 'ON' : 'OFF';
+          var badge = relay.state ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
+          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Enabled' : 'Disabled') + '</td></tr>';
+        });
+      }
+      document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
+    }).catch(e=>console.log('IO status load failed', e));
+    
     // Clear network loading placeholder
     var nc = document.getElementById('netcfg'); if(nc) nc.textContent = '';
   }).catch(e=>{ if(e !== 'auth') console.log('dashboard load failed', e); });
@@ -1394,6 +1545,7 @@ function restartNtp(){
 }
 
 loadDashboard();
+setInterval(loadDashboard, 5000);
 </script>
 <script>
 function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }

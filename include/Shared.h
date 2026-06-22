@@ -130,6 +130,11 @@ bool Shared_writeDigitalInput(size_t index, int16_t value);
 bool Shared_writeAnalogInput(size_t index, float value);
 bool Shared_setRelayState(size_t index, bool on);
 
+// Input/Output Configuration access
+bool Shared_getDigitalInputConfig(size_t index, DigitalInputConfig &out);
+bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out);
+bool Shared_getRelayConfig(size_t index, RelayConfig &out);
+
 // AP mode
 bool Shared_isAPModeActive();
 void Shared_setAPModeActive(bool active);

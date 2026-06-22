@@ -38,7 +38,7 @@ struct IOConfigStore {
   RelayConfig relay[RELAY_OUTPUT_COUNT];
 };
 
-static constexpr uint16_t IO_CONFIG_VERSION = 1;
+static constexpr uint16_t IO_CONFIG_VERSION = 2;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 
@@ -449,6 +449,14 @@ bool Shared_getRelayConfig(size_t index, RelayConfig &out) {
   out = relayConfig[index];
   Shared_unlockState();
   return true;
+}
+
+bool Shared_saveRelayConfig(size_t index, const RelayConfig &cfg) {
+  if (index >= RELAY_OUTPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  relayConfig[index] = cfg;
+  Shared_unlockState();
+  return saveIOConfigToFile();
 }
 
 // ---------------------------------------------------------------------------

@@ -84,6 +84,10 @@ struct AnalogInputConfig {
 struct RelayConfig {
   bool enabled;
   char name[32];
+  bool default_power_up_state;  // OFF=false, ON=true
+  bool sms_control_enabled;
+  bool alarm_control_enabled;
+  uint8_t alarm_source;  // 0=none, 1-2=AI1-AI2, 3-6=DI1-DI4
 };
 
 struct SystemSnapshot {
@@ -151,6 +155,7 @@ bool Shared_saveDigitalInputConfig(size_t index, const DigitalInputConfig &cfg);
 bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out);
 bool Shared_saveAnalogInputConfig(size_t index, const AnalogInputConfig &cfg);
 bool Shared_getRelayConfig(size_t index, RelayConfig &out);
+bool Shared_saveRelayConfig(size_t index, const RelayConfig &cfg);
 
 // AP mode
 bool Shared_isAPModeActive();

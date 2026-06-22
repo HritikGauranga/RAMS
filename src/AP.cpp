@@ -7,6 +7,7 @@
 #include <esp_system.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 #include <new>
 
 static AsyncWebServer *server            = nullptr;
@@ -26,6 +27,7 @@ static String         gAuthSessionToken = "";
 static const char *FW_BUILD_TAG_VALUE = FW_BUILD_TAG;
 
 static const char *htmlPage();
+static void sendHtmlPage(AsyncWebServerRequest *request);
 static void setupWebServerRoutes();
 static void startAPMode();
 static void stopAPMode();
@@ -183,6 +185,9 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
     <button type="submit">Login</button>
   </form>
 <script>
+  // Clear session storage on login page load to ensure fresh logins go to Dashboard
+  sessionStorage.clear();
+  
   (function() {
     var pass = document.getElementById('pass');
     var btn = document.getElementById('togglePass');
@@ -1282,12 +1287,85 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
+  // Relay (DO) Config endpoints
+  server->on("/api/relay-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Not authenticated\"}");
+      return;
+    }
+    String body = "[";
+    for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+      RelayConfig cfg = {};
+      Shared_getRelayConfig(i, cfg);
+      if (i > 0) body += ",";
+      body += "{\"index\":" + String((int)i) + ",";
+      body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
+      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
+      body += "\"default_power_up_state\":" + String(cfg.default_power_up_state ? "true" : "false") + ",";
+      body += "\"sms_control_enabled\":" + String(cfg.sms_control_enabled ? "true" : "false") + ",";
+      body += "\"alarm_control_enabled\":" + String(cfg.alarm_control_enabled ? "true" : "false") + ",";
+      body += "\"alarm_source\":" + String((int)cfg.alarm_source) + "}";
+    }
+    body += "]";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/relay-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Not authenticated\"}");
+      return;
+    }
+    if (!request->hasParam("index", true)) {
+      request->send(400, "application/json", "{\"error\":\"Missing index parameter\"}");
+      return;
+    }
+    int idx = request->getParam("index", true)->value().toInt();
+    if (idx < 0 || idx >= (int)RELAY_OUTPUT_COUNT) {
+      request->send(400, "application/json", "{\"error\":\"Invalid index\"}");
+      return;
+    }
+
+    RelayConfig cfg = {};
+    Shared_getRelayConfig(idx, cfg);
+
+    if (request->hasParam("enabled", true)) {
+      cfg.enabled = (request->getParam("enabled", true)->value() == "1");
+    }
+    if (request->hasParam("name", true)) {
+      String name = request->getParam("name", true)->value();
+      name.toCharArray(cfg.name, sizeof(cfg.name));
+      cfg.name[sizeof(cfg.name) - 1] = '\0';
+    }
+    if (request->hasParam("default_power_up_state", true)) {
+      cfg.default_power_up_state = (request->getParam("default_power_up_state", true)->value() == "1");
+    }
+    if (request->hasParam("sms_control_enabled", true)) {
+      cfg.sms_control_enabled = (request->getParam("sms_control_enabled", true)->value() == "1");
+    }
+    if (request->hasParam("alarm_control_enabled", true)) {
+      cfg.alarm_control_enabled = (request->getParam("alarm_control_enabled", true)->value() == "1");
+    }
+    if (request->hasParam("alarm_source", true)) {
+      int val = request->getParam("alarm_source", true)->value().toInt();
+      cfg.alarm_source = (uint8_t)(val & 0xFF);
+    }
+
+    if (!Shared_saveRelayConfig(idx, cfg)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
+
+
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
       return;
     }
-    request->send_P(200, "text/html", htmlPage());
+    sendHtmlPage(request);
   });
 
   // Message CSV endpoints removed for RAMS; configuration is handled via Web UI
@@ -1767,7 +1845,87 @@ static const char *htmlPage() {
           <div style="text-align:center;padding:20px;color:#999" id="ai_loading">Loading Analog Input configurations...</div>
         </div>
       </div>
-      <div id="relays" class="tab" style="display:none"><div class="panel"><h2>DO Config</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
+      <div id="relays" class="tab" style="display:none">
+        <div class="panel">
+          <h2>DO Config</h2>
+          <div class="subtitle">Control relay outputs and automation</div>
+          <div style="margin-top:20px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:6px">
+            <label style="font-weight:600;display:block;margin-bottom:10px;font-size:13px">Select Output</label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select id="do_selector" onchange="switchDO(parseInt(this.value))" style="padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;flex:1;min-width:100px;background-color:#fff">
+                <option value="0">DO1</option>
+                <option value="1">DO2</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
+                <input type="checkbox" id="do_enabled" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
+                <span style="font-weight:500">Enable</span>
+              </label>
+            </div>
+          </div>
+          <div id="do_status" style="display:none;padding:10px;margin-bottom:15px;border-radius:4px;font-size:13px;font-weight:500"></div>
+          
+          <!-- Basic Settings Section -->
+          <div style="background:#e8f4f8;padding:14px;border-radius:6px;margin-bottom:15px">
+            <h3 style="margin:0 0 12px 0;color:#0066cc;font-size:14px;font-weight:600">Basic Settings</h3>
+            <div style="margin-bottom:12px">
+              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
+              <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-weight:500;display:block;margin-bottom:8px;font-size:13px">Default Power-Up State</label>
+              <div style="display:flex;gap:10px">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                  <input type="radio" name="do_powerup" value="0" onchange="saveDOConfig()" style="cursor:pointer"> OFF
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                  <input type="radio" name="do_powerup" value="1" onchange="saveDOConfig()" style="cursor:pointer"> ON
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Control Options Section -->
+          <div style="background:#fff3cd;padding:14px;border-radius:6px;margin-bottom:15px">
+            <h3 style="margin:0 0 12px 0;color:#cc6600;font-size:14px;font-weight:600">Control Options</h3>
+            <div style="margin-bottom:12px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
+                <input type="checkbox" id="do_sms_control" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
+                <span style="font-weight:500">Enable SMS Control</span>
+              </label>
+              <div style="font-size:12px;color:#666;margin-top:4px;margin-left:24px">Commands: DO1 ON, DO1 OFF, DO1 PULSE 30</div>
+            </div>
+            <div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0">
+                <input type="checkbox" id="do_alarm_control" onchange="saveDOConfig()" style="width:16px;height:16px;cursor:pointer">
+                <span style="font-weight:500">Enable Alarm Control</span>
+              </label>
+              <div style="font-size:12px;color:#666;margin-top:4px;margin-left:24px">Output activates when alarm triggers</div>
+            </div>
+          </div>
+
+          <!-- Alarm Source Section -->
+          <div style="background:#f0e6ff;padding:14px;border-radius:6px;margin-bottom:15px">
+            <h3 style="margin:0 0 12px 0;color:#7722cc;font-size:14px;font-weight:600">Alarm Source</h3>
+            <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm (if Alarm Control enabled)</label>
+            <select id="do_alarm_source" onchange="saveDOConfig()" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff">
+              <option value="0">None</option>
+              <option value="1">AI1 - High Level</option>
+              <option value="2">AI1 - Low Level</option>
+              <option value="3">AI2 - High Level</option>
+              <option value="4">AI2 - Low Level</option>
+              <option value="5">DI1 - Alarm</option>
+              <option value="6">DI2 - Alarm</option>
+              <option value="7">DI3 - Alarm</option>
+              <option value="8">DI4 - Alarm</option>
+            </select>
+          </div>
+
+          <!-- Save Button -->
+          <div style="margin-top:20px;display:flex;gap:10px">
+            <button onclick="saveDOConfig()" style="flex:1;padding:12px;background:#0066cc;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-size:14px">Save Configuration</button>
+          </div>
+        </div>
+      </div>
       <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
@@ -1898,6 +2056,7 @@ function switchToTab(tabName) {
   document.getElementById('topbar_subtitle').textContent = labels.subtitle;
   if (tabName === 'digital') loadDIConfig();
   if (tabName === 'analog') loadAIConfig();
+  if (tabName === 'relays') loadDOConfig();
   if (tabName === 'sysconfig') loadSystemConfig();
   if (tabName === 'phones') loadPhones();
   if (tabName === 'network') loadNetworkCfg();
@@ -2039,6 +2198,7 @@ function saveDIConfig(){
 }
 
 var ai_configs = [];
+var do_configs = [];
 
 function getAIUnitOptions(){
   var sel = document.getElementById('ai_unit_select');
@@ -2172,6 +2332,76 @@ function saveAIConfig(){
     });
 }
 
+function loadDOConfig(){
+  fetch('/api/relay-config').then(r=>{
+    if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(d=>{
+    do_configs = d;
+    var saved_idx = parseInt(localStorage.getItem('selectedDOIndex')) || 0;
+    if(saved_idx >= 0 && saved_idx < d.length) {
+      switchDO(saved_idx);
+      document.getElementById('do_selector').value = saved_idx;
+    } else {
+      switchDO(0);
+    }
+  }).catch(e=>{
+    if(e === 'auth') return;
+    console.error('Error loading DO config:', e);
+  });
+}
+
+function switchDO(index){
+  if(!do_configs || do_configs.length === 0) return;
+  var cfg = do_configs[index];
+  if (!cfg) return;
+  document.getElementById('do_enabled').checked = cfg.enabled;
+  document.getElementById('do_name').value = cfg.name || '';
+  document.querySelectorAll('input[name="do_powerup"]').forEach(function(r) { r.checked = false; });
+  var powerup = document.querySelector('input[name="do_powerup"][value="' + (cfg.default_power_up_state ? '1' : '0') + '"]');
+  if (powerup) powerup.checked = true;
+  document.getElementById('do_sms_control').checked = cfg.sms_control_enabled;
+  document.getElementById('do_alarm_control').checked = cfg.alarm_control_enabled;
+  document.getElementById('do_alarm_source').value = cfg.alarm_source || 0;
+  window.current_do_index = index;
+  localStorage.setItem('selectedDOIndex', index);
+}
+
+function saveDOConfig(){
+  var index = window.current_do_index || 0;
+  var form_data = new FormData();
+  form_data.append('index', index);
+  form_data.append('enabled', document.getElementById('do_enabled').checked ? '1' : '0');
+  form_data.append('name', document.getElementById('do_name').value.trim());
+  var powerupEl = document.querySelector('input[name="do_powerup"]:checked');
+  form_data.append('default_power_up_state', powerupEl ? powerupEl.value : '0');
+  form_data.append('sms_control_enabled', document.getElementById('do_sms_control').checked ? '1' : '0');
+  form_data.append('alarm_control_enabled', document.getElementById('do_alarm_control').checked ? '1' : '0');
+  form_data.append('alarm_source', document.getElementById('do_alarm_source').value);
+  
+  var status_el = document.getElementById('do_status');
+  fetch('/api/relay-config', { method:'POST', body:form_data })
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.success) {
+        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),default_power_up_state:form_data.get('default_power_up_state')==='1',sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source'))};
+        status_el.textContent = 'DO' + (index+1) + ' configuration saved successfully!';
+        status_el.style.color = 'green';
+      } else {
+        status_el.textContent = 'Error: ' + (d.error || 'Save failed');
+        status_el.style.color = 'red';
+      }
+      status_el.style.display = 'block';
+      setTimeout(function(){ status_el.style.display = 'none'; }, 4000);
+    })
+    .catch(e=>{
+      status_el.textContent = 'Error: ' + e.message;
+      status_el.style.color = 'red';
+      status_el.style.display = 'block';
+    });
+}
+
+
 function showStatus(msg, ok) {
   var el = document.getElementById('sys_status'); if (!el) return;
   el.textContent = msg; el.style.display = 'block'; el.style.color = ok ? 'green' : 'red';
@@ -2217,12 +2447,23 @@ function restartNtp(){
 loadDashboard();
 setInterval(loadDashboard, 5000);
 
-// Restore last selected tab on page load
-var savedTab = localStorage.getItem('selectedTab') || 'dashboard';
-if (document.getElementById(savedTab)) {
-  switchToTab(savedTab);
-} else {
+// Tab restoration logic:
+// - First page load (fresh login): Start at Dashboard
+// - Page refresh while on another tab: Stay on that tab
+var isFirstPageLoad = !sessionStorage.getItem('pageLoaded');
+sessionStorage.setItem('pageLoaded', 'true');
+
+if (isFirstPageLoad) {x
+  // Fresh login - always start at Dashboard
   switchToTab('dashboard');
+} else {
+  // Page refresh - restore previous tab
+  var savedTab = localStorage.getItem('selectedTab') || 'dashboard';
+  if (document.getElementById(savedTab)) {
+    switchToTab(savedTab);
+  } else {
+    switchToTab('dashboard');
+  }
 }
 </script>
 <script>
@@ -2352,4 +2593,20 @@ function sanitizeIpInput(el){ if(!el) return; var cleaned = el.value.replace(/[^
 </html>
 
 )rawliteral";
+}
+
+static void sendHtmlPage(AsyncWebServerRequest *request) {
+  AsyncWebServerResponse *response = request->beginChunkedResponse(
+    "text/html",
+    [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+      const char *page = htmlPage();
+      const size_t len = strlen(page);
+      if (index >= len) return 0;
+      size_t chunkLen = len - index;
+      if (chunkLen > maxLen) chunkLen = maxLen;
+      memcpy(buffer, page + index, chunkLen);
+      return chunkLen;
+    });
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
 }

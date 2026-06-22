@@ -65,10 +65,20 @@ struct DigitalInputConfig {
 
 struct AnalogInputConfig {
   bool enabled;
-  float scale;
-  float alarmHigh;
-  float alarmLow;
   char name[32];
+  char engineering_unit[16];  // e.g., "Liters", "Bar", "%", "°C"
+  float scale_low;            // Engineering value at 4mA
+  float scale_high;           // Engineering value at 20mA
+  uint8_t alarm_type;         // 0=High, 1=Low, 2=In-Band, 3=Out-of-Band
+  float set_point;            // Alarm trigger threshold
+  float reset_point;          // Alarm clear threshold
+  uint16_t tta_ms;            // Time to alarm (milliseconds)
+  uint16_t ttr_ms;            // Time to return (milliseconds)
+  bool alarm_sms_enabled;
+  bool return_sms_enabled;
+  char alarm_message[64];
+  char return_message[64];
+  uint8_t selected_contacts;
 };
 
 struct RelayConfig {
@@ -139,6 +149,7 @@ bool Shared_setRelayState(size_t index, bool on);
 bool Shared_getDigitalInputConfig(size_t index, DigitalInputConfig &out);
 bool Shared_saveDigitalInputConfig(size_t index, const DigitalInputConfig &cfg);
 bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out);
+bool Shared_saveAnalogInputConfig(size_t index, const AnalogInputConfig &cfg);
 bool Shared_getRelayConfig(size_t index, RelayConfig &out);
 
 // AP mode

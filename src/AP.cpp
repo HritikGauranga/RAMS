@@ -25,7 +25,7 @@ static String         gAuthSessionToken = "";
 #endif
 static const char *FW_BUILD_TAG_VALUE = FW_BUILD_TAG;
 
-static String htmlPage();
+static const char *htmlPage();
 static void setupWebServerRoutes();
 static void startAPMode();
 static void stopAPMode();
@@ -1175,12 +1175,119 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
+  server->on("/api/analog-input-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    String body = "[";
+    for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
+      if (i) body += ",";
+      AnalogInputConfig cfg = {};
+      Shared_getAnalogInputConfig(i, cfg);
+      body += "{";
+      body += "\"index\":" + String(i) + ",";
+      body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
+      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
+      body += "\"engineering_unit\":\"" + escapeJson(String(cfg.engineering_unit)) + "\",";
+      body += "\"scale_low\":" + String(cfg.scale_low, 4) + ",";
+      body += "\"scale_high\":" + String(cfg.scale_high, 4) + ",";
+      body += "\"alarm_type\":" + String(cfg.alarm_type) + ",";
+      body += "\"set_point\":" + String(cfg.set_point, 4) + ",";
+      body += "\"reset_point\":" + String(cfg.reset_point, 4) + ",";
+      body += "\"tta_ms\":" + String(cfg.tta_ms) + ",";
+      body += "\"ttr_ms\":" + String(cfg.ttr_ms) + ",";
+      body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
+      body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
+      body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
+      body += "\"return_message\":\"" + escapeJson(String(cfg.return_message)) + "\",";
+      body += "\"selected_contacts\":" + String(cfg.selected_contacts);
+      body += "}";
+    }
+    body += "]";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/analog-input-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    if (!request->hasParam("index", true)) {
+      request->send(400, "application/json", "{\"error\":\"Missing index parameter\"}");
+      return;
+    }
+
+    size_t idx = request->getParam("index", true)->value().toInt();
+    if (idx >= ANALOG_INPUT_COUNT) {
+      request->send(400, "application/json", "{\"error\":\"Invalid index\"}");
+      return;
+    }
+
+    AnalogInputConfig cfg = {};
+    Shared_getAnalogInputConfig(idx, cfg);
+
+    // Update fields from POST parameters
+    if (request->hasParam("enabled", true)) cfg.enabled = (request->getParam("enabled", true)->value() == "1");
+    if (request->hasParam("name", true)) {
+      String name = request->getParam("name", true)->value();
+      strncpy(cfg.name, name.c_str(), sizeof(cfg.name) - 1);
+      cfg.name[sizeof(cfg.name) - 1] = '\0';
+    }
+    if (request->hasParam("engineering_unit", true)) {
+      String unit = request->getParam("engineering_unit", true)->value();
+      strncpy(cfg.engineering_unit, unit.c_str(), sizeof(cfg.engineering_unit) - 1);
+      cfg.engineering_unit[sizeof(cfg.engineering_unit) - 1] = '\0';
+    }
+    if (request->hasParam("scale_low", true)) cfg.scale_low = request->getParam("scale_low", true)->value().toFloat();
+    if (request->hasParam("scale_high", true)) cfg.scale_high = request->getParam("scale_high", true)->value().toFloat();
+    if (request->hasParam("alarm_type", true)) {
+      int val = request->getParam("alarm_type", true)->value().toInt();
+      cfg.alarm_type = (val >= 0 && val <= 3) ? (uint8_t)val : 0;
+    }
+    if (request->hasParam("set_point", true)) cfg.set_point = request->getParam("set_point", true)->value().toFloat();
+    if (request->hasParam("reset_point", true)) cfg.reset_point = request->getParam("reset_point", true)->value().toFloat();
+    if (request->hasParam("tta_ms", true)) {
+      int val = request->getParam("tta_ms", true)->value().toInt();
+      cfg.tta_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+    }
+    if (request->hasParam("ttr_ms", true)) {
+      int val = request->getParam("ttr_ms", true)->value().toInt();
+      cfg.ttr_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+    }
+    if (request->hasParam("alarm_sms_enabled", true)) cfg.alarm_sms_enabled = (request->getParam("alarm_sms_enabled", true)->value() == "1");
+    if (request->hasParam("return_sms_enabled", true)) cfg.return_sms_enabled = (request->getParam("return_sms_enabled", true)->value() == "1");
+    if (request->hasParam("alarm_message", true)) {
+      String msg = request->getParam("alarm_message", true)->value();
+      strncpy(cfg.alarm_message, msg.c_str(), sizeof(cfg.alarm_message) - 1);
+      cfg.alarm_message[sizeof(cfg.alarm_message) - 1] = '\0';
+    }
+    if (request->hasParam("return_message", true)) {
+      String msg = request->getParam("return_message", true)->value();
+      strncpy(cfg.return_message, msg.c_str(), sizeof(cfg.return_message) - 1);
+      cfg.return_message[sizeof(cfg.return_message) - 1] = '\0';
+    }
+    if (request->hasParam("selected_contacts", true)) {
+      int val = request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = (uint8_t)(val & 0xFF);
+    }
+
+    if (!Shared_saveAnalogInputConfig(idx, cfg)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
       return;
     }
-    request->send(200, "text/html", htmlPage());
+    request->send_P(200, "text/html", htmlPage());
   });
 
   // Message CSV endpoints removed for RAMS; configuration is handled via Web UI
@@ -1273,7 +1380,7 @@ void AP_taskLoop(void *pvParameters) {
   }
 }
 
-static String htmlPage() {
+static const char *htmlPage() {
   return R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -1509,7 +1616,146 @@ static String htmlPage() {
           <div style="text-align:center;padding:20px;color:#999" id="di_loading">Loading Digital Input configurations...</div>
         </div>
       </div>
-      <div id="analog" class="tab" style="display:none"><div class="panel"><h2>AI Config</h2><div class="subtitle">Configure and view 2 analog inputs here (placeholder).</div></div></div>
+      <div id="analog" class="tab" style="display:none">
+        <div class="panel">
+          <h2>AI Config</h2>
+          <div id="ai_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
+          
+          <!-- Selector Section -->
+          <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <label style="font-weight:600;font-size:14px;white-space:nowrap">Select Analog Input</label>
+              <select id="ai_selector" onchange="switchAI(this.value)" style="padding:10px 12px;font-size:14px;width:120px;border:1px solid #ccc;border-radius:4px;background-color:#fff;cursor:pointer">
+                <option value="0">AI1</option>
+                <option value="1">AI2</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="checkbox" id="ai_enabled" style="width:18px;height:18px;cursor:pointer">
+              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
+            </div>
+          </div>
+          
+          <div id="ai_form_container" style="display:none">
+            <form id="ai_form">
+              <!-- Basic Settings Section -->
+              <div style="margin-bottom:24px">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
+                    <input type="text" id="ai_name" placeholder="e.g. Tank Level" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Engineering Unit</label>
+                    <input type="text" id="ai_unit" placeholder="e.g. Liters, Bar, °C" maxlength="15" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Scaling Configuration Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Scaling (4-20mA)</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale Low (4mA)</label>
+                    <input type="number" id="ai_scale_low" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 4mA</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale High (20mA)</label>
+                    <input type="number" id="ai_scale_high" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 20mA</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Alarm Type Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Type</h3>
+                <div style="display:flex;gap:16px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <input type="radio" id="ai_type_high" name="ai_alarm_type" value="0" style="width:16px;height:16px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">High Alarm</label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <input type="radio" id="ai_type_low" name="ai_alarm_type" value="1" style="width:16px;height:16px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Low Alarm</label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <input type="radio" id="ai_type_inband" name="ai_alarm_type" value="2" style="width:16px;height:16px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">In-Band Alarm</label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <input type="radio" id="ai_type_outband" name="ai_alarm_type" value="3" style="width:16px;height:16px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Out-of-Band Alarm</label>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Alarm Thresholds Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Thresholds</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Set Point</label>
+                    <input type="number" id="ai_set_point" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Alarm triggers at this value</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Reset Point</label>
+                    <input type="number" id="ai_reset_point" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Alarm clears at this value</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Alarm (seconds)</label>
+                    <input type="number" id="ai_tta" min="1" max="65535" value="1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm triggers</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Return (seconds)</label>
+                    <input type="number" id="ai_ttr" min="1" max="65535" value="1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm clears</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- SMS Notification Settings Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #9C27B0">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SMS Notifications</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="ai_alarm_sms" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm SMS</label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="ai_return_sms" style="width:18px;height:18px;cursor:pointer">
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return SMS</label>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr;gap:14px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
+                    <input type="text" id="ai_alarm_msg" placeholder="e.g. HIGH TANK LEVEL" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
+                  </div>
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
+                    <input type="text" id="ai_return_msg" placeholder="e.g. TANK LEVEL RETURNED TO NORMAL" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Button -->
+              <div style="display:flex;gap:10px;margin-top:28px">
+                <button type="button" class="btn primary" onclick="saveAIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
+              </div>
+            </form>
+          </div>
+          <div style="text-align:center;padding:20px;color:#999" id="ai_loading">Loading Analog Input configurations...</div>
+        </div>
+      </div>
       <div id="relays" class="tab" style="display:none"><div class="panel"><h2>DO Config</h2><div class="subtitle">Control 2 relay outputs (placeholder).</div></div></div>
       <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
@@ -1640,6 +1886,7 @@ function switchToTab(tabName) {
   document.getElementById('topbar_title').textContent = labels.title;
   document.getElementById('topbar_subtitle').textContent = labels.subtitle;
   if (tabName === 'digital') loadDIConfig();
+  if (tabName === 'analog') loadAIConfig();
   if (tabName === 'sysconfig') loadSystemConfig();
   if (tabName === 'phones') loadPhones();
   if (tabName === 'network') loadNetworkCfg();
@@ -1765,6 +2012,98 @@ function saveDIConfig(){
       if(d.success) {
         di_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),normally_closed:form_data.get('normally_closed')==='1',tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:0};
         status_el.textContent = 'DI' + (index+1) + ' configuration saved successfully!';
+        status_el.style.color = 'green';
+      } else {
+        status_el.textContent = 'Error: ' + (d.error || 'Save failed');
+        status_el.style.color = 'red';
+      }
+      status_el.style.display = 'block';
+      setTimeout(function(){ status_el.style.display = 'none'; }, 4000);
+    })
+    .catch(e=>{
+      status_el.textContent = 'Error: ' + e.message;
+      status_el.style.color = 'red';
+      status_el.style.display = 'block';
+    });
+}
+
+var ai_configs = [];
+
+function loadAIConfig(){
+  fetch('/api/analog-input-config').then(r=>{
+    if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(configs=>{
+    ai_configs = configs;
+    document.getElementById('ai_loading').style.display = 'none';
+    document.getElementById('ai_form_container').style.display = 'block';
+    var savedAIIndex = localStorage.getItem('selectedAIIndex') || '0';
+    var selectedIndex = parseInt(savedAIIndex);
+    document.getElementById('ai_selector').value = selectedIndex;
+    switchAI(selectedIndex);
+  }).catch(e=>{ if(e !== 'auth') console.log('ai config load failed', e); });
+}
+
+function switchAI(index){
+  if(!ai_configs || ai_configs.length === 0) return;
+  var cfg = ai_configs[index];
+  document.getElementById('ai_enabled').checked = cfg.enabled;
+  document.getElementById('ai_name').value = cfg.name || '';
+  document.getElementById('ai_unit').value = cfg.engineering_unit || '';
+  document.getElementById('ai_scale_low').value = cfg.scale_low || 0;
+  document.getElementById('ai_scale_high').value = cfg.scale_high || 100;
+  
+  // Set alarm type radio button
+  document.querySelectorAll('input[name="ai_alarm_type"]').forEach(function(r) { r.checked = false; });
+  var typeRadio = document.getElementById('ai_type_' + ['high', 'low', 'inband', 'outband'][cfg.alarm_type || 0]);
+  if (typeRadio) typeRadio.checked = true;
+  
+  document.getElementById('ai_set_point').value = cfg.set_point || 0;
+  document.getElementById('ai_reset_point').value = cfg.reset_point || 0;
+  document.getElementById('ai_tta').value = cfg.tta_ms || 1;
+  document.getElementById('ai_ttr').value = cfg.ttr_ms || 1;
+  document.getElementById('ai_alarm_sms').checked = cfg.alarm_sms_enabled;
+  document.getElementById('ai_return_sms').checked = cfg.return_sms_enabled;
+  document.getElementById('ai_alarm_msg').value = cfg.alarm_message || '';
+  document.getElementById('ai_return_msg').value = cfg.return_message || '';
+  window.current_ai_index = index;
+  localStorage.setItem('selectedAIIndex', index);
+}
+
+function saveAIConfig(){
+  var index = window.current_ai_index || 0;
+  var form_data = new FormData();
+  form_data.append('index', index);
+  form_data.append('enabled', document.getElementById('ai_enabled').checked ? '1' : '0');
+  form_data.append('name', document.getElementById('ai_name').value.trim());
+  form_data.append('engineering_unit', document.getElementById('ai_unit').value.trim());
+  form_data.append('scale_low', document.getElementById('ai_scale_low').value);
+  form_data.append('scale_high', document.getElementById('ai_scale_high').value);
+  
+  // Get alarm type from radio buttons
+  var alarmType = 0;
+  document.querySelectorAll('input[name="ai_alarm_type"]').forEach(function(r) { 
+    if (r.checked) alarmType = parseInt(r.value); 
+  });
+  form_data.append('alarm_type', alarmType);
+  
+  form_data.append('set_point', document.getElementById('ai_set_point').value);
+  form_data.append('reset_point', document.getElementById('ai_reset_point').value);
+  form_data.append('tta_ms', document.getElementById('ai_tta').value);
+  form_data.append('ttr_ms', document.getElementById('ai_ttr').value);
+  form_data.append('alarm_sms_enabled', document.getElementById('ai_alarm_sms').checked ? '1' : '0');
+  form_data.append('return_sms_enabled', document.getElementById('ai_return_sms').checked ? '1' : '0');
+  form_data.append('alarm_message', document.getElementById('ai_alarm_msg').value.trim());
+  form_data.append('return_message', document.getElementById('ai_return_msg').value.trim());
+  form_data.append('selected_contacts', 0);
+  
+  var status_el = document.getElementById('ai_status');
+  fetch('/api/analog-input-config', { method:'POST', body:form_data })
+    .then(r=>r.json())
+    .then(d=>{ 
+      if(d.success) {
+        ai_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),engineering_unit:form_data.get('engineering_unit'),scale_low:parseFloat(form_data.get('scale_low')),scale_high:parseFloat(form_data.get('scale_high')),alarm_type:alarmType,set_point:parseFloat(form_data.get('set_point')),reset_point:parseFloat(form_data.get('reset_point')),tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:0};
+        status_el.textContent = 'AI' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {
         status_el.textContent = 'Error: ' + (d.error || 'Save failed');

@@ -345,6 +345,14 @@ bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out) {
   return true;
 }
 
+bool Shared_saveAnalogInputConfig(size_t index, const AnalogInputConfig &cfg) {
+  if (index >= ANALOG_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
+  analogInputConfig[index] = cfg;
+  Shared_unlockState();
+  return true;
+}
+
 bool Shared_getRelayConfig(size_t index, RelayConfig &out) {
   if (index >= RELAY_OUTPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;

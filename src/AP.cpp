@@ -1337,8 +1337,8 @@ static String htmlPage() {
     <div class="content">
       <div class="topbar">
         <div>
-          <h2>Dashboard</h2>
-          <div class="subtitle">Current Configuration Status</div>
+          <h2 id="topbar_title">Dashboard</h2>
+          <div class="subtitle" id="topbar_subtitle">Current Configuration Status</div>
         </div>
         <div class="actions">
           <button class="btn danger" onclick="location.href='/logout'">Logout</button>
@@ -1617,18 +1617,38 @@ static String htmlPage() {
   </div>
 
 <script>
-document.getElementById('nav').addEventListener('click', function(e){
-  var li = e.target.closest('li'); if(!li) return;
-  var tab = li.getAttribute('data-tab');
+var tabLabels = {
+  'dashboard': { title: 'Dashboard', subtitle: 'System Overview & Status' },
+  'digital': { title: 'DI Config', subtitle: 'Digital Input Configuration' },
+  'analog': { title: 'AI Config', subtitle: 'Analog Input Configuration' },
+  'relays': { title: 'DO Config', subtitle: 'Relay Output Configuration' },
+  'phones': { title: 'Contact Config', subtitle: 'Manage SMS Recipients' },
+  'network': { title: 'Network Configuration', subtitle: 'Ethernet & WiFi Settings' },
+  'sysconfig': { title: 'System Config', subtitle: 'System Information & Settings' },
+  'diag': { title: 'Diagnostics', subtitle: 'System Health & Logs' }
+};
+
+function switchToTab(tabName) {
+  var li = document.querySelector('[data-tab="' + tabName + '"]');
+  if (!li) return;
   document.querySelectorAll('.nav li').forEach(function(n){ n.classList.remove('active'); });
   li.classList.add('active');
   document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
-  var el = document.getElementById(tab); if(el) el.style.display='block';
-  if (tab === 'digital') loadDIConfig();
-  if (tab === 'sysconfig') loadSystemConfig();
-  if (tab === 'phones') loadPhones();
-  if (tab === 'network') loadNetworkCfg();
-  
+  var el = document.getElementById(tabName); if(el) el.style.display='block';
+  localStorage.setItem('selectedTab', tabName);
+  var labels = tabLabels[tabName] || { title: tabName, subtitle: '' };
+  document.getElementById('topbar_title').textContent = labels.title;
+  document.getElementById('topbar_subtitle').textContent = labels.subtitle;
+  if (tabName === 'digital') loadDIConfig();
+  if (tabName === 'sysconfig') loadSystemConfig();
+  if (tabName === 'phones') loadPhones();
+  if (tabName === 'network') loadNetworkCfg();
+}
+
+document.getElementById('nav').addEventListener('click', function(e){
+  var li = e.target.closest('li'); if(!li) return;
+  var tab = li.getAttribute('data-tab');
+  switchToTab(tab);
 });
 
 function setStat(id, value){ var el=document.getElementById(id); if(el) el.textContent = value; }
@@ -1700,7 +1720,10 @@ function loadDIConfig(){
     di_configs = configs;
     document.getElementById('di_loading').style.display = 'none';
     document.getElementById('di_form_container').style.display = 'block';
-    switchDI(0);
+    var savedDIIndex = localStorage.getItem('selectedDIIndex') || '0';
+    var selectedIndex = parseInt(savedDIIndex);
+    document.getElementById('di_selector').value = selectedIndex;
+    switchDI(selectedIndex);
   }).catch(e=>{ if(e !== 'auth') console.log('di config load failed', e); });
 }
 
@@ -1717,6 +1740,7 @@ function switchDI(index){
   document.getElementById('di_alarm_msg').value = cfg.alarm_message || '';
   document.getElementById('di_return_msg').value = cfg.return_message || '';
   window.current_di_index = index;
+  localStorage.setItem('selectedDIIndex', index);
 }
 
 function saveDIConfig(){
@@ -1800,6 +1824,14 @@ function restartNtp(){
 
 loadDashboard();
 setInterval(loadDashboard, 5000);
+
+// Restore last selected tab on page load
+var savedTab = localStorage.getItem('selectedTab') || 'dashboard';
+if (document.getElementById(savedTab)) {
+  switchToTab(savedTab);
+} else {
+  switchToTab('dashboard');
+}
 </script>
 <script>
 function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }

@@ -1648,7 +1648,18 @@ static const char *htmlPage() {
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Engineering Unit</label>
-                    <input type="text" id="ai_unit" placeholder="e.g. Liters, Bar, °C" maxlength="15" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <select id="ai_unit_select" onchange="toggleAIUnitCustom(true)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff">
+                      <option value="Liters">Liters</option>
+                      <option value="Percentage (%)">Percentage (%)</option>
+                      <option value="Bar">Bar</option>
+                      <option value="PSI">PSI</option>
+                      <option value="&deg;C">&deg;C</option>
+                      <option value="&deg;F">&deg;F</option>
+                      <option value="mA">mA</option>
+                      <option value="Volts">Volts</option>
+                      <option value="__custom__">Custom Text</option>
+                    </select>
+                    <input type="text" id="ai_unit_custom" placeholder="Custom unit" maxlength="15" style="display:none;width:100%;margin-top:8px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
                   </div>
                 </div>
               </div>
@@ -2029,6 +2040,48 @@ function saveDIConfig(){
 
 var ai_configs = [];
 
+function getAIUnitOptions(){
+  var sel = document.getElementById('ai_unit_select');
+  var vals = [];
+  if (!sel) return vals;
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value !== '__custom__') vals.push(sel.options[i].value);
+  }
+  return vals;
+}
+
+function toggleAIUnitCustom(focusCustom){
+  var sel = document.getElementById('ai_unit_select');
+  var custom = document.getElementById('ai_unit_custom');
+  if (!sel || !custom) return;
+  custom.style.display = sel.value === '__custom__' ? 'block' : 'none';
+  if (focusCustom && sel.value === '__custom__') custom.focus();
+}
+
+function setAIEngineeringUnit(unit){
+  var sel = document.getElementById('ai_unit_select');
+  var custom = document.getElementById('ai_unit_custom');
+  if (!sel || !custom) return;
+  var value = unit || 'Liters';
+  var options = getAIUnitOptions();
+  if (options.indexOf(value) >= 0) {
+    sel.value = value;
+    custom.value = '';
+  } else {
+    sel.value = '__custom__';
+    custom.value = value;
+  }
+  toggleAIUnitCustom(false);
+}
+
+function getAIEngineeringUnit(){
+  var sel = document.getElementById('ai_unit_select');
+  var custom = document.getElementById('ai_unit_custom');
+  if (!sel) return '';
+  if (sel.value === '__custom__') return custom ? custom.value.trim() : '';
+  return sel.value;
+}
+
 function loadAIConfig(){
   fetch('/api/analog-input-config').then(r=>{
     if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
@@ -2049,7 +2102,7 @@ function switchAI(index){
   var cfg = ai_configs[index];
   document.getElementById('ai_enabled').checked = cfg.enabled;
   document.getElementById('ai_name').value = cfg.name || '';
-  document.getElementById('ai_unit').value = cfg.engineering_unit || '';
+  setAIEngineeringUnit(cfg.engineering_unit || 'Liters');
   document.getElementById('ai_scale_low').value = cfg.scale_low || 0;
   document.getElementById('ai_scale_high').value = cfg.scale_high || 100;
   
@@ -2076,7 +2129,7 @@ function saveAIConfig(){
   form_data.append('index', index);
   form_data.append('enabled', document.getElementById('ai_enabled').checked ? '1' : '0');
   form_data.append('name', document.getElementById('ai_name').value.trim());
-  form_data.append('engineering_unit', document.getElementById('ai_unit').value.trim());
+  form_data.append('engineering_unit', getAIEngineeringUnit());
   form_data.append('scale_low', document.getElementById('ai_scale_low').value);
   form_data.append('scale_high', document.getElementById('ai_scale_high').value);
   

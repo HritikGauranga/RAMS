@@ -341,7 +341,10 @@ bool Shared_loadGatewaySettings() {
       else if (key == "static_ip") parseIPv4(val, loaded.staticIp);
       else if (key == "subnet_mask") parseIPv4(val, loaded.subnetMask);
       else if (key == "gateway_ip") parseIPv4(val, loaded.gatewayIp);
-      else if (key == "http_port") loaded.httpPort = (uint16_t)val.toInt();
+      else if (key == "http_port") {
+        int port = val.toInt();
+        loaded.httpPort = (port >= 1 && port <= 65535) ? (uint16_t)port : 80;
+      }
     }
     f.close();
   }
@@ -439,9 +442,9 @@ bool Shared_saveAuthorizedContacts(const ContactList &list) {
     num.trim();
     if (num.length() == 0) continue; // skip blanks
     if (!isValidPhoneFormat(num)) return false;
+    if (filtered.count >= MAX_PHONE_PER_LIST) return false;
     filtered.items[filtered.count++] = list.items[i];
   }
-  if (filtered.count > MAX_PHONE_PER_LIST) return false;
 
   // Also ensure recipients we write are filtered (drop blanks)
   ContactList otherFiltered = {};
@@ -450,6 +453,7 @@ bool Shared_saveAuthorizedContacts(const ContactList &list) {
     num.trim();
     if (num.length() == 0) continue;
     if (!isValidPhoneFormat(num)) continue;
+    if (otherFiltered.count >= MAX_PHONE_PER_LIST) break;
     otherFiltered.items[otherFiltered.count++] = recipientContacts.items[i];
   }
 
@@ -475,7 +479,7 @@ bool Shared_saveAuthorizedContacts(const ContactList &list) {
     out.print(",\"name\":\""); out.print(name); out.print("\"");
     out.print(",\"number\":\""); out.print(num); out.print("\"}");
   }
-  out.print("}");
+  out.print("]}");
   out.close();
   Shared_unlockFileSystem();
 
@@ -493,9 +497,9 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
     num.trim();
     if (num.length() == 0) continue;
     if (!isValidPhoneFormat(num)) return false;
+    if (filtered.count >= MAX_PHONE_PER_LIST) return false;
     filtered.items[filtered.count++] = list.items[i];
   }
-  if (filtered.count > MAX_PHONE_PER_LIST) return false;
 
   // Ensure authorized contacts we write are filtered as well
   ContactList otherFiltered = {};
@@ -504,6 +508,7 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
     num.trim();
     if (num.length() == 0) continue;
     if (!isValidPhoneFormat(num)) continue;
+    if (otherFiltered.count >= MAX_PHONE_PER_LIST) break;
     otherFiltered.items[otherFiltered.count++] = authorizedContacts.items[i];
   }
 
@@ -529,7 +534,7 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
     out.print(",\"name\":\""); out.print(name); out.print("\"");
     out.print(",\"number\":\""); out.print(num); out.print("\"}");
   }
-  out.print("}");
+  out.print("]}");
   out.close();
   Shared_unlockFileSystem();
 

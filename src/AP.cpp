@@ -1,4 +1,4 @@
-﻿#include "AP.h"
+#include "AP.h"
 #include "Shared.h"
 #include <ESPAsyncWebServer.h>
 #include <ETH.h>
@@ -7,8 +7,9 @@
 #include <esp_system.h>
 #include <time.h>
 #include <stdlib.h>
+#include <new>
 
-static AsyncWebServer server(80);
+static AsyncWebServer *server            = nullptr;
 static bool          serverStarted     = false;
 static bool          serverRoutesSetup = false;
 static const char    *WEBUI_USER        = "Admin";
@@ -344,6 +345,8 @@ static bool writeSerialNumberOnce(const String &serial, String &error) {
     }
   }
 
+  LittleFS.mkdir("/littlefs");
+
   File out = LittleFS.open(SERIAL_FILE_PATH, "w");
   if (!out) {
     Shared_unlockFileSystem();
@@ -527,7 +530,6 @@ static String gatewaySettingsPage() {
     <div><label>Static IP</label><input id="staticIp" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
     <div><label>Subnet Mask</label><input id="subnetMask" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
     <div><label>Gateway IP</label><input id="gatewayIp" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)"></div>
-    <div><label>HTTP Port</label><input id="tcpPort" type="number" min="1" max="65535" inputmode="numeric" oninput="sanitizeNumberInput(this)"></div>
   </div>
   <div class="row" style="margin-top:14px">
     <button class="btn" onclick="saveCfg()">Save Settings</button>
@@ -547,14 +549,12 @@ function sanitizeIpInput(el){
   }
   el.value = parts.join('.');
 }
-function sanitizeNumberInput(el){ if(!el) return; el.value = el.value.replace(/[^0-9]/g, ''); if(el.value==='') return; var v=parseInt(el.value,10); if(!Number.isFinite(v)) return; if(v<1) v=1; if(v>65535) v=65535; el.value=String(v); }
 function loadCfg(){
   fetch('/api/gateway-settings').then(r=>r.json()).then(c=>{
     document.getElementById('useDhcp').checked=!!c.use_dhcp;
     document.getElementById('staticIp').value=c.static_ip||'';
     document.getElementById('subnetMask').value=c.subnet_mask||'';
     document.getElementById('gatewayIp').value=c.gateway_ip||'';
-    document.getElementById('tcpPort').value=c.http_port;
   }).catch(e=>status('Load failed: '+e.message,false));
 }
 function saveCfg(){
@@ -563,7 +563,6 @@ function saveCfg(){
   p.append('static_ip',document.getElementById('staticIp').value.trim());
   p.append('subnet_mask',document.getElementById('subnetMask').value.trim());
   p.append('gateway_ip',document.getElementById('gatewayIp').value.trim());
-  p.append('http_port',document.getElementById('tcpPort').value);
   fetch('/api/gateway-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()})
     .then(r=>r.json()).then(d=>{ if(d.success) status('Saved. Reboot to apply.',true); else status(d.error||'Save failed',false); })
     .catch(e=>status('Save failed: '+e.message,false));
@@ -595,13 +594,14 @@ void printAPStatus() {
 // Message CSV/table support removed for RAMS firmware
 
 static void setupWebServerRoutes() {
+  if (server == nullptr) return;
   if (serverRoutesSetup) return;
 
-  server.on("/Gaurangalogo.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/Gaurangalogo.png", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/Gaurangalogo.png", "image/png");
   });
 
-  server.on("/login", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/login", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (isAuthenticated(request)) {
       sendRedirect(request, "/");
       return;
@@ -610,7 +610,7 @@ static void setupWebServerRoutes() {
     request->send(200, "text/html", loginPage(getLoginUsername(), bad));
   });
 
-  server.on("/login", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/login", HTTP_POST, [](AsyncWebServerRequest *request) {
     String user = request->hasParam("user", true) ? request->getParam("user", true)->value() : "";
     String pass = request->hasParam("pass", true) ? request->getParam("pass", true)->value() : "";
     String expectedUser = getLoginUsername();
@@ -630,11 +630,11 @@ static void setupWebServerRoutes() {
     sendRedirect(request, "/login?err=1");
   });
 
-  server.on("/logout", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/logout", HTTP_GET, [](AsyncWebServerRequest *request) {
     clearAuthCookie(request);
   });
 
-  server.on("/serialnumber", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/serialnumber", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
       return;
@@ -643,7 +643,7 @@ static void setupWebServerRoutes() {
     request->send(200, "text/html", serialNumberPage(serial, "", true));
   });
 
-  server.on("/serialnumber/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/serialnumber/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
       return;
@@ -652,7 +652,7 @@ static void setupWebServerRoutes() {
     request->send(200, "text/html", serialNumberPage(serial, "", true));
   });
 
-  server.on("/serialnumber/", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/serialnumber/", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "text/plain", "Unauthorized");
       return;
@@ -682,7 +682,7 @@ static void setupWebServerRoutes() {
   // Gateway config page and API removed; Network configuration handled under
   // the Network tab in the Web UI which currently fetches /api/dashboard.
 
-  server.on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -712,14 +712,13 @@ static void setupWebServerRoutes() {
     body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
     body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
     body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
-    body += "\"http_port\":" + String(s.httpPort) + ",";
     body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
 
   // System Config endpoints: store site details and timezone in LittleFS
-  server.on("/api/system-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/api/system-config", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -744,7 +743,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", body);
   });
 
-  server.on("/api/system-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/api/system-config", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -772,7 +771,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
-  server.on("/api/restart-ntp", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/api/restart-ntp", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -788,7 +787,7 @@ static void setupWebServerRoutes() {
   });
 
   // Contact endpoints (authorized & recipients)
-  server.on("/api/contacts/authorized", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/api/contacts/authorized", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -810,7 +809,7 @@ static void setupWebServerRoutes() {
     body += "]}";
     request->send(200, "application/json", body);
   });
-  server.on("/api/contacts/authorized", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/api/contacts/authorized", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -894,7 +893,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
-  server.on("/api/contacts/recipients", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/api/contacts/recipients", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     ContactList cl = {};
     if (!Shared_getRecipientContacts(cl)) { request->send(500, "application/json", "{\"error\":\"Read failed\"}"); return; }
@@ -911,7 +910,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", body);
   });
 
-  server.on("/api/contacts/recipients", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/api/contacts/recipients", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     String body = request->hasParam("contacts", true) ? request->getParam("contacts", true)->value() : "";
     if (body.length() == 0) { request->send(400, "application/json", "{\"error\":\"Missing contacts payload\"}"); return; }
@@ -976,7 +975,7 @@ static void setupWebServerRoutes() {
   });
 
   // Network settings endpoints (used by Network tab)
-  server.on("/api/gateway-settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/api/gateway-settings", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
@@ -990,28 +989,32 @@ static void setupWebServerRoutes() {
     body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
     body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
     body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
-    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
-    body += "\"http_port\":" + String(s.httpPort);
+    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
 
-  server.on("/api/gateway-settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/api/gateway-settings", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
     GatewaySettings s = {};
+    Shared_getGatewaySettings(s);
     s.useDhcp = request->hasParam("use_dhcp", true) ? (request->getParam("use_dhcp", true)->value() == "1") : false;
     String sip = request->hasParam("static_ip", true) ? request->getParam("static_ip", true)->value() : "";
     String sm = request->hasParam("subnet_mask", true) ? request->getParam("subnet_mask", true)->value() : "";
     String gw = request->hasParam("gateway_ip", true) ? request->getParam("gateway_ip", true)->value() : "";
-    String port = request->hasParam("http_port", true) ? request->getParam("http_port", true)->value() : "80";
+    if (!s.useDhcp) {
+      if (!parseIPFromText(sip, s.staticIp) ||
+          !parseIPFromText(sm, s.subnetMask) ||
+          !parseIPFromText(gw, s.gatewayIp)) {
+        request->send(400, "application/json", "{\"error\":\"Invalid static network settings\"}");
+        return;
+      }
+    }
 
-    if (sip.length() > 0) parseIPFromText(sip, s.staticIp);
-    if (sm.length() > 0) parseIPFromText(sm, s.subnetMask);
-    if (gw.length() > 0) parseIPFromText(gw, s.gatewayIp);
-    s.httpPort = (uint16_t)port.toInt();
+    s.httpPort = 80;
 
     if (!Shared_saveGatewaySettings(s)) {
       request->send(500, "application/json", "{\"error\":\"Save failed\"}");
@@ -1020,7 +1023,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       sendRedirect(request, "/login");
       return;
@@ -1085,9 +1088,17 @@ void AP_taskLoop(void *pvParameters) {
   clearStaleSerialForNewBuild();
 
   // Keep Web UI always active (Ethernet IP + AP IP when AP mode is enabled).
+  if (server == nullptr) {
+    server = new (std::nothrow) AsyncWebServer(80);
+    if (server == nullptr) {
+      Serial.println("[WEB] ERROR: Failed to allocate config server");
+      vTaskDelete(nullptr);
+      return;
+    }
+  }
   setupWebServerRoutes();
   if (!serverStarted) {
-    server.begin();
+    server->begin();
     serverStarted = true;
     Serial.println("[WEB] Config server started on port 80 (always active)");
   }
@@ -1187,13 +1198,12 @@ static String htmlPage() {
           <div class="grid" id="dashGrid">
             <div class="stat"><div class="label">Serial Number</div><div class="value" id="s_serial">Loading...</div></div>
             <div class="stat"><div class="label">Login User Name</div><div class="value" id="s_login">Loading...</div></div>
-            <div class="stat"><div class="label">Wi‑Fi AP IP</div><div class="value" id="s_apip">Loading...</div></div>
+            <div class="stat"><div class="label">Wi-Fi AP IP</div><div class="value" id="s_apip">Loading...</div></div>
             <div class="stat"><div class="label">Ethernet IP</div><div class="value" id="s_ethip">Loading...</div></div>
             <div class="stat"><div class="label">DHCP Mode</div><div class="value" id="s_dhcp">Loading...</div></div>
             <div class="stat"><div class="label">Static IP</div><div class="value" id="s_static">Loading...</div></div>
             <div class="stat"><div class="label">Subnet Mask</div><div class="value" id="s_subnet">Loading...</div></div>
             <div class="stat"><div class="label">Gateway IP</div><div class="value" id="s_gateway">Loading...</div></div>
-            <div class="stat"><div class="label">HTTP Port</div><div class="value" id="s_httpport">-</div></div>
             <div class="stat"><div class="label">Firmware</div><div class="value" id="s_fw">-</div></div>
           </div>
         </div>
@@ -1252,10 +1262,6 @@ static String htmlPage() {
               <div class="field">
                 <label>Gateway IP</label>
                 <input id="net_gatewayIp" class="input" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
-              </div>
-              <div class="field">
-                <label>HTTP Port</label>
-                <input id="net_tcpPort" class="input" type="number" min="1" max="65535" inputmode="numeric" oninput="sanitizeNumberInput(this)">
               </div>
             </div>
             <div class="form-actions">
@@ -1340,7 +1346,6 @@ function loadDashboard(){
     setStat('s_static', d.static_ip || '-');
     setStat('s_subnet', d.subnet_mask || '-');
     setStat('s_gateway', d.gateway_ip || '-');
-    setStat('s_httpport', d.http_port ? String(d.http_port) : '-');
     setStat('s_fw', d.fw_build || '-');
     // Clear network loading placeholder
     var nc = document.getElementById('netcfg'); if(nc) nc.textContent = '';
@@ -1471,7 +1476,6 @@ function loadNetworkCfg(){
     var si = document.getElementById('net_staticIp'); if (si) si.value = d.static_ip || '';
     var sm = document.getElementById('net_subnetMask'); if (sm) sm.value = d.subnet_mask || '';
     var gw = document.getElementById('net_gatewayIp'); if (gw) gw.value = d.gateway_ip || '';
-    var tp = document.getElementById('net_tcpPort'); if (tp) tp.value = d.http_port || '';
     // ensure static fields are enabled/disabled according to DHCP
     try { toggleNetworkStaticFields(); } catch(e){}
   }).catch(e=>{ if(e!=='auth') console.log('network load failed', e); });
@@ -1482,7 +1486,6 @@ function saveNetworkCfg(){
   var staticIp = (document.getElementById('net_staticIp')||{}).value || '';
   var subnet = (document.getElementById('net_subnetMask')||{}).value || '';
   var gateway = (document.getElementById('net_gatewayIp')||{}).value || '';
-  var port = (document.getElementById('net_tcpPort')||{}).value || '';
 
   if (!useDhcp) {
     if (!isValidIPv4(staticIp) || !isValidIPv4(subnet) || !isValidIPv4(gateway)) {
@@ -1490,14 +1493,11 @@ function saveNetworkCfg(){
       return;
     }
   }
-  if (port && (isNaN(parseInt(port,10)) || parseInt(port,10) < 1)) { showSmallStatus('net_status','Invalid port', false); return; }
-
   var p = new URLSearchParams();
   p.append('use_dhcp', useDhcp ? '1' : '0');
   p.append('static_ip', staticIp.trim());
   p.append('subnet_mask', subnet.trim());
   p.append('gateway_ip', gateway.trim());
-  p.append('http_port', port.trim());
 
   fetch('/api/gateway-settings', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('net_status','Saved. Reboot to apply',true); else showSmallStatus('net_status',d.error||'Save failed',false); })
@@ -1517,7 +1517,6 @@ function toggleNetworkStaticFields(){
 }
 
 function sanitizeIpInput(el){ if(!el) return; var cleaned = el.value.replace(/[^0-9.]/g,''); var parts = cleaned.split('.'); if(parts.length>4) parts = parts.slice(0,4); for(var i=0;i<parts.length;i++){ if(parts[i].length>3) parts[i] = parts[i].slice(0,3); } el.value = parts.join('.'); }
-function sanitizeNumberInput(el){ if(!el) return; el.value = el.value.replace(/[^0-9]/g, ''); if(el.value==='') return; var v=parseInt(el.value,10); if(!Number.isFinite(v)) return; if(v<1) v=1; if(v>65535) v=65535; el.value=String(v); }
 </script>
 </body>
 </html>

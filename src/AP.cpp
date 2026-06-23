@@ -1779,9 +1779,9 @@ static const char *htmlPage() {
               
               <!-- Event Recipients Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
                   <div id="di_recipients_select"
                   style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
                   <div style="color:#999">(no recipients configured)</div>
@@ -1942,9 +1942,9 @@ static const char *htmlPage() {
               
               <!-- Event Recipients Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
                   <div id="ai_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
                   <div style="color:#999">(no recipients configured)</div>
                   </div>
@@ -2039,9 +2039,9 @@ static const char *htmlPage() {
               
               <!-- Event Recipients Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
                   <div id="relay_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
                   <div style="color:#999">(no recipients configured)</div>
                   </div>

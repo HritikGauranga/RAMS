@@ -2076,6 +2076,7 @@ static const char *htmlPage() {
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
+              <a href="/" class="muted" style="margin-left:12px">Back to Dashboard</a>
             </div>
             <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
           </div>
@@ -2090,22 +2091,8 @@ static const char *htmlPage() {
               </div>
               <div class="field">
                 <label>SIM Phone Number</label>
-                <input
-                    id="sim_phone"
-                    type="text"
-                    class="input"
-                    placeholder="e.g., +1234567890"
-                    maxlength="19"
-                    oninput="
-                        let v=this.value.replace(/[^0-9+]/g,'');
-                        if(v.startsWith('+')){
-                            v='+'+v.substring(1).replace(/\+/g,'');
-                        }else{
-                            v=v.replace(/\+/g,'');
-                        }
-                        this.value=v;
-                    ">
-            </div>
+                <input id="sim_phone" type="text" class="input" placeholder="e.g., +1234567890" maxlength="19">
+              </div>
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
@@ -2161,13 +2148,13 @@ static const char *htmlPage() {
 <script>
 var tabLabels = {
   'dashboard': { title: 'Dashboard', subtitle: 'System Overview & Status' },
-  'digital': { title: 'DI Config'},
-  'analog': { title: 'AI Config'},
-  'relays': { title: 'DO Config'},
-  'phones': { title: 'Contact Config'},
-  'network': { title: 'Network Configuration'},
-  'sysconfig': { title: 'System Config'},
-  'diag': { title: 'Diagnostics',}
+  'digital': { title: 'DI Config', subtitle: 'Digital Input Configuration' },
+  'analog': { title: 'AI Config', subtitle: 'Analog Input Configuration' },
+  'relays': { title: 'DO Config', subtitle: 'Relay Output Configuration' },
+  'phones': { title: 'Contact Config', subtitle: 'Manage SMS Recipients' },
+  'network': { title: 'Network Configuration', subtitle: 'Ethernet & WiFi Settings' },
+  'sysconfig': { title: 'System Config', subtitle: 'System Information & Settings' },
+  'diag': { title: 'Diagnostics', subtitle: 'System Health & Logs' }
 };
 
 function switchToTab(tabName) {

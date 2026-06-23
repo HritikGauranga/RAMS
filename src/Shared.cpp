@@ -706,3 +706,66 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   Shared_unlockState();
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// SIM Configuration
+// ---------------------------------------------------------------------------
+bool Shared_getSIMConfig(SIMConfig &out) {
+  out = {};
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(500))) return true; // return defaults if can't lock
+  
+  if (LittleFS.exists("/sim_config.json")) {
+    File f = LittleFS.open("/sim_config.json", "r");
+    if (f) {
+      String json = f.readString();
+      f.close();
+      
+      // Parse JSON: {"service_provider":"...", "phone_number":"..."}
+      int provIdx = json.indexOf("\"service_provider\"");
+      if (provIdx >= 0) {
+        int q1 = json.indexOf('"', provIdx + 19);
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q1 >= 0 && q2 >= 0) {
+          String provider = json.substring(q1 + 1, q2);
+          provider.toCharArray(out.service_provider, sizeof(out.service_provider));
+        }
+      }
+      
+      int phoneIdx = json.indexOf("\"phone_number\"");
+      if (phoneIdx >= 0) {
+        int q1 = json.indexOf('"', phoneIdx + 14);
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q1 >= 0 && q2 >= 0) {
+          String phone = json.substring(q1 + 1, q2);
+          phone.toCharArray(out.phone_number, sizeof(out.phone_number));
+        }
+      }
+    }
+  }
+  
+  Shared_unlockFileSystem();
+  return true;
+}
+
+bool Shared_saveSIMConfig(const SIMConfig &cfg) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  
+  File f = LittleFS.open("/sim_config.json", "w");
+  if (!f) {
+    Shared_unlockFileSystem();
+    return false;
+  }
+  
+  String provider = escapeJsonString(String(cfg.service_provider));
+  String phone = escapeJsonString(String(cfg.phone_number));
+  
+  f.print("{");
+  f.print("\"service_provider\":\""); f.print(provider); f.print("\",");
+  f.print("\"phone_number\":\""); f.print(phone); f.print("\"");
+  f.print("}");
+  f.close();
+  Shared_unlockFileSystem();
+  
+  Serial.println("[SIM] SIM configuration saved");
+  return true;
+}

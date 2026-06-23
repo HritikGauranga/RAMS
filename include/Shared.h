@@ -90,6 +90,11 @@ struct RelayConfig {
   uint8_t alarm_source;  // 0=none, 1-2=AI1-AI2, 3-6=DI1-DI4
 };
 
+struct SIMConfig {
+  char service_provider[64];   // e.g., "Vodafone", "AT&T"
+  char phone_number[PHONE_NUMBER_LENGTH];  // User's SIM phone number
+};
+
 struct SystemSnapshot {
   bool apModeActive;
   int16_t digitalInputs[DIGITAL_INPUT_COUNT];
@@ -156,6 +161,10 @@ bool Shared_getAnalogInputConfig(size_t index, AnalogInputConfig &out);
 bool Shared_saveAnalogInputConfig(size_t index, const AnalogInputConfig &cfg);
 bool Shared_getRelayConfig(size_t index, RelayConfig &out);
 bool Shared_saveRelayConfig(size_t index, const RelayConfig &cfg);
+
+// SIM Configuration
+bool Shared_getSIMConfig(SIMConfig &out);
+bool Shared_saveSIMConfig(const SIMConfig &cfg);
 
 // AP mode
 bool Shared_isAPModeActive();

@@ -371,6 +371,49 @@ static bool takeNextPendingSlot(size_t &slotIndex) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Modem_getSignalStrength
+// ---------------------------------------------------------------------------
+// Returns signal strength 0-31 (where 0=very weak, 31=excellent), -1 on error, -2 if SIM not inserted
+int8_t Modem_getSignalStrength() {
+  if (simMissingLatched) {
+    Serial.println("[MODEM] SIM not inserted, cannot get signal strength");
+    return -2;
+  }
+
+  if (!modemReady) {
+    Serial.println("[MODEM] Modem not ready, cannot get signal strength");
+    return -1;
+  }
+
+  // AT+CSQ returns +CSQ: <rssi>,<ber>
+  // rssi: 0=very weak, 1-30=weak to excellent, 31=excellent
+  String response = sendAT("AT+CSQ", 2000);
+  
+  if (response.indexOf("+CSQ:") == -1) {
+    Serial.println("[MODEM] No CSQ response from modem");
+    return -1;
+  }
+
+  int colonIdx = response.indexOf(':');
+  if (colonIdx < 0) return -1;
+
+  // Find first number after ':'
+  int commaIdx = response.indexOf(',', colonIdx);
+  if (commaIdx < 0) return -1;
+
+  String rssiStr = response.substring(colonIdx + 1, commaIdx);
+  rssiStr.trim();
+
+  int rssi = rssiStr.toInt();
+  if (rssi < 0 || rssi > 31) {
+    Serial.printf("[MODEM] Invalid RSSI value: %d\n", rssi);
+    return -1;
+  }
+
+  return (int8_t)rssi;
+}
+
 void Modem_task(void *pvParameters) {
   (void)pvParameters;
 

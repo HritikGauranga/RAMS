@@ -1,5 +1,6 @@
 #include "AP.h"
 #include "Shared.h"
+#include "Modem.h"
 #include <ESPAsyncWebServer.h>
 #include <ETH.h>
 #include <LittleFS.h>
@@ -578,8 +579,6 @@ loadCfg();
 )rawliteral";
 }
 
-
-
 void printAPStatus() {
   Serial.println("");
   Serial.println("=== AP Mode Info ===");
@@ -698,6 +697,22 @@ static void setupWebServerRoutes() {
       return;
     }
 
+    SIMConfig simCfg = {};
+    Shared_getSIMConfig(simCfg);
+
+    int8_t rssi = Modem_getSignalStrength();
+    String strength = "Unknown";
+    if (rssi == -2) {
+      strength = "SIM Not Inserted";
+    } else if (rssi >= 0) {
+      if (rssi >= 25) strength = "Excellent";
+      else if (rssi >= 20) strength = "Very Good";
+      else if (rssi >= 15) strength = "Good";
+      else if (rssi >= 10) strength = "Fair";
+      else if (rssi >= 5) strength = "Weak";
+      else strength = "Very Weak";
+    }
+
     String serial = readSerialNumber();
     if (serial.length() == 0) serial = "Not Set";
     String apIp = WiFi.softAPIP().toString();
@@ -706,6 +721,14 @@ static void setupWebServerRoutes() {
     if (ethIp == "0.0.0.0") {
       ethIp = ipBytesToString(s.staticIp);
     }
+
+    // Merge SIM info for display: "Provider - Phone Number"
+    String simDisplay = String(simCfg.service_provider);
+    if (String(simCfg.phone_number).length() > 0) {
+      if (simDisplay.length() > 0) simDisplay += " - ";
+      simDisplay += String(simCfg.phone_number);
+    }
+    if (simDisplay.length() == 0) simDisplay = "Not Set";
 
     String body = "{";
     body += "\"serial_number\":\"" + serial + "\",";
@@ -716,7 +739,10 @@ static void setupWebServerRoutes() {
     body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
     body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
     body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
-    body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\"";
+    body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\",";
+    body += "\"signal_strength\":\"" + strength + "\",";
+    body += "\"rssi\":" + String((int)rssi) + ",";
+    body += "\"sim_info\":\"" + simDisplay + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
@@ -1357,7 +1383,72 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
+  // SIM Configuration endpoints
+  server->on("/api/sim-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
 
+    SIMConfig cfg = {};
+    Shared_getSIMConfig(cfg);
+
+    String body = "{";
+    body += "\"service_provider\":\"" + String(cfg.service_provider) + "\",";
+    body += "\"phone_number\":\"" + String(cfg.phone_number) + "\"";
+    body += "}";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/sim-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    SIMConfig cfg = {};
+    if (request->hasParam("service_provider", true)) {
+      String provider = request->getParam("service_provider", true)->value();
+      provider.toCharArray(cfg.service_provider, sizeof(cfg.service_provider));
+      cfg.service_provider[sizeof(cfg.service_provider) - 1] = '\0';
+    }
+    if (request->hasParam("phone_number", true)) {
+      String phone = request->getParam("phone_number", true)->value();
+      phone.toCharArray(cfg.phone_number, sizeof(cfg.phone_number));
+      cfg.phone_number[sizeof(cfg.phone_number) - 1] = '\0';
+    }
+
+    if (!Shared_saveSIMConfig(cfg)) {
+      request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+      return;
+    }
+
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
+  // Signal strength endpoint
+  server->on("/api/signal-strength", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    int8_t rssi = Modem_getSignalStrength();
+    String strength = "Unknown";
+    if (rssi == -2) {
+      strength = "SIM Not Inserted";
+    } else if (rssi >= 0) {
+      if (rssi >= 25) strength = "Excellent (" + String(rssi) + "/31)";
+      else if (rssi >= 20) strength = "Very Good (" + String(rssi) + "/31)";
+      else if (rssi >= 15) strength = "Good (" + String(rssi) + "/31)";
+      else if (rssi >= 10) strength = "Fair (" + String(rssi) + "/31)";
+      else if (rssi >= 5) strength = "Weak (" + String(rssi) + "/31)";
+      else strength = "Very Weak (" + String(rssi) + "/31)";
+    }
+
+    String body = "{\"rssi\":" + String((int)rssi) + ",\"strength\":\"" + strength + "\"}";
+    request->send(200, "application/json", body);
+  });
 
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
@@ -1539,6 +1630,8 @@ static const char *htmlPage() {
             <div class="stat"><div class="label">Ethernet IP</div><div class="value" id="s_ethip">Loading...</div></div>
             <div class="stat"><div class="label">DHCP Mode</div><div class="value" id="s_dhcp">Loading...</div></div>
             <div class="stat"><div class="label">Static IP</div><div class="value" id="s_static">Loading...</div></div>
+            <div class="stat"><div class="label">4G Signal Strength</div><div class="value" id="s_signal">Loading...</div></div>
+            <div class="stat"><div class="label">SIM Information</div><div class="value" id="s_siminfo">Loading...</div></div>
           </div>
         </div>
         
@@ -1983,9 +2076,40 @@ static const char *htmlPage() {
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
-              <a href="/" class="muted" style="margin-left:12px">Back to Dashboard</a>
             </div>
             <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
+          </div>
+
+          <div class="form-section">
+            <h3>SIM Configuration</h3>
+            <div id="sim_status" style="display:none;margin-bottom:12px"></div>
+            <div class="form-grid">
+              <div class="field">
+                <label>Service Provider</label>
+                <input id="sim_provider" type="text" class="input" placeholder="e.g., Vodafone, AT&T" maxlength="63">
+              </div>
+              <div class="field">
+                <label>SIM Phone Number</label>
+                <input
+                    id="sim_phone"
+                    type="text"
+                    class="input"
+                    placeholder="e.g., +1234567890"
+                    maxlength="19"
+                    oninput="
+                        let v=this.value.replace(/[^0-9+]/g,'');
+                        if(v.startsWith('+')){
+                            v='+'+v.substring(1).replace(/\+/g,'');
+                        }else{
+                            v=v.replace(/\+/g,'');
+                        }
+                        this.value=v;
+                    ">
+            </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2037,13 +2161,13 @@ static const char *htmlPage() {
 <script>
 var tabLabels = {
   'dashboard': { title: 'Dashboard', subtitle: 'System Overview & Status' },
-  'digital': { title: 'DI Config', subtitle: 'Digital Input Configuration' },
-  'analog': { title: 'AI Config', subtitle: 'Analog Input Configuration' },
-  'relays': { title: 'DO Config', subtitle: 'Relay Output Configuration' },
-  'phones': { title: 'Contact Config', subtitle: 'Manage SMS Recipients' },
-  'network': { title: 'Network Configuration', subtitle: 'Ethernet & WiFi Settings' },
-  'sysconfig': { title: 'System Config', subtitle: 'System Information & Settings' },
-  'diag': { title: 'Diagnostics', subtitle: 'System Health & Logs' }
+  'digital': { title: 'DI Config'},
+  'analog': { title: 'AI Config'},
+  'relays': { title: 'DO Config'},
+  'phones': { title: 'Contact Config'},
+  'network': { title: 'Network Configuration'},
+  'sysconfig': { title: 'System Config'},
+  'diag': { title: 'Diagnostics',}
 };
 
 function switchToTab(tabName) {
@@ -2062,7 +2186,7 @@ function switchToTab(tabName) {
   if (tabName === 'relays') loadDOConfig();
   if (tabName === 'sysconfig') loadSystemConfig();
   if (tabName === 'phones') loadPhones();
-  if (tabName === 'network') loadNetworkCfg();
+  if (tabName === 'network') { loadNetworkCfg(); loadSIMConfig(); }
 }
 
 document.getElementById('nav').addEventListener('click', function(e){
@@ -2083,6 +2207,8 @@ function loadDashboard(){
     setStat('s_ethip', d.eth_ip || '-');
     setStat('s_dhcp', d.use_dhcp ? 'Enabled' : 'Disabled');
     setStat('s_static', d.static_ip || '-');
+    setStat('s_signal', d.signal_strength || 'Unknown');
+    setStat('s_siminfo', d.sim_info || 'Not Set');
     
     // Load system config for site/location
     fetch('/api/system-config').then(r=>r.json()).then(cfg=>{
@@ -2592,6 +2718,42 @@ function toggleNetworkStaticFields(){
 }
 
 function sanitizeIpInput(el){ if(!el) return; var cleaned = el.value.replace(/[^0-9.]/g,''); var parts = cleaned.split('.'); if(parts.length>4) parts = parts.slice(0,4); for(var i=0;i<parts.length;i++){ if(parts[i].length>3) parts[i] = parts[i].slice(0,3); } el.value = parts.join('.'); }
+
+// Load SIM Configuration
+function loadSIMConfig() {
+  fetch('/api/sim-config').then(r=>r.json()).then(cfg=>{
+    if (cfg.service_provider) document.getElementById('sim_provider').value = cfg.service_provider;
+    if (cfg.phone_number) document.getElementById('sim_phone').value = cfg.phone_number;
+  }).catch(e=>console.log('SIM config load failed', e));
+}
+
+// Save SIM Configuration
+function saveSIMConfig(){
+  var provider = (document.getElementById('sim_provider')||{}).value || '';
+  var phone = (document.getElementById('sim_phone')||{}).value || '';
+
+  var p = new URLSearchParams();
+  p.append('service_provider', provider.trim());
+  p.append('phone_number', phone.trim());
+
+  fetch('/api/sim-config', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('sim_status','SIM configuration saved',true); else showSmallStatus('sim_status',d.error||'Save failed',false); })
+    .catch(e=>showSmallStatus('sim_status','Save failed',false));
+}
+
+// Helper to show status messages
+function showSmallStatus(elementId, message, isSuccess){
+  var el = document.getElementById(elementId);
+  if(!el) return;
+  el.style.display = 'block';
+  el.style.background = isSuccess ? '#d4edda' : '#f8d7da';
+  el.style.color = isSuccess ? '#155724' : '#721c24';
+  el.style.padding = '12px';
+  el.style.borderRadius = '4px';
+  el.style.borderLeft = '4px solid ' + (isSuccess ? '#28a745' : '#dc3545');
+  el.innerHTML = message;
+  setTimeout(function(){ el.style.display = 'none'; }, 4000);
+}
 </script>
 </body>
 </html>

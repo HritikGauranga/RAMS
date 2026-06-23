@@ -1640,7 +1640,7 @@ static const char *htmlPage() {
           
           <div style="margin-bottom:20px">
             <h3 style="font-size:14px;margin-bottom:10px;color:#555">Digital Inputs</h3>
-            <table style="width:100%;border-collapse:collapse">
+            <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Input</th>
@@ -1657,7 +1657,7 @@ static const char *htmlPage() {
 
           <div style="margin-bottom:20px">
             <h3 style="font-size:14px;margin-bottom:10px;color:#555">Analog Inputs</h3>
-            <table style="width:100%;border-collapse:collapse">
+            <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Input</th>
@@ -1674,7 +1674,7 @@ static const char *htmlPage() {
 
           <div>
             <h3 style="font-size:14px;margin-bottom:10px;color:#555">Relay Outputs</h3>
-            <table style="width:100%;border-collapse:collapse">
+            <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Output</th>
@@ -1777,6 +1777,18 @@ static const char *htmlPage() {
                 </div>
               </div>
               
+              <!-- Event Recipients Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <div id="di_recipients_select"
+                  style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
+                  <div style="color:#999">(no recipients configured)</div>
+                  </div>
+                </div>
+              </div>
+              
               <!-- Action Button -->
               <div style="display:flex;gap:10px;margin-top:28px">
                 <button type="button" class="btn primary" onclick="saveDIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
@@ -1788,7 +1800,7 @@ static const char *htmlPage() {
       </div>
       <div id="analog" class="tab" style="display:none">
         <div class="panel">
-          <h2>AI Config</h2>
+          <h2>Analog Input Configuration</h2>
           <div id="ai_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
@@ -1928,6 +1940,17 @@ static const char *htmlPage() {
                 </div>
               </div>
               
+              <!-- Event Recipients Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <div id="ai_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
+                  <div style="color:#999">(no recipients configured)</div>
+                  </div>
+                </div>
+              </div>
+              
               <!-- Action Button -->
               <div style="display:flex;gap:10px;margin-top:28px">
                 <button type="button" class="btn primary" onclick="saveAIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
@@ -1939,7 +1962,7 @@ static const char *htmlPage() {
       </div>
       <div id="relays" class="tab" style="display:none">
         <div class="panel">
-          <h2>DO Config</h2>
+          <h2>Digital Output Config</h2>
           <div id="do_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
@@ -2014,6 +2037,17 @@ static const char *htmlPage() {
                 </div>
               </div>
               
+              <!-- Event Recipients Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+                <div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <div id="relay_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
+                  <div style="color:#999">(no recipients configured)</div>
+                  </div>
+                </div>
+              </div>
+              
               <!-- Save Button -->
               <div style="margin-top:24px;display:flex;gap:12px">
                 <button type="button" onclick="saveDOConfig()" style="flex:1;padding:12px;background:#0066cc;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-size:14px">Save Configuration</button>
@@ -2076,7 +2110,6 @@ static const char *htmlPage() {
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
-              <a href="/" class="muted" style="margin-left:12px">Back to Dashboard</a>
             </div>
             <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
           </div>
@@ -2087,12 +2120,26 @@ static const char *htmlPage() {
             <div class="form-grid">
               <div class="field">
                 <label>Service Provider</label>
-                <input id="sim_provider" type="text" class="input" placeholder="e.g., Vodafone, AT&T" maxlength="63">
+                <input id="sim_provider" type="text" class="input" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)">
               </div>
               <div class="field">
                 <label>SIM Phone Number</label>
-                <input id="sim_phone" type="text" class="input" placeholder="e.g., +1234567890" maxlength="19">
-              </div>
+                <input
+                    id="sim_phone"
+                    type="text"
+                    class="input"
+                    placeholder="e.g., +1234567890"
+                    maxlength="19"
+                    oninput="
+                        let v=this.value.replace(/[^0-9+]/g,'');
+                        if(v.startsWith('+')){
+                            v='+'+v.substring(1).replace(/\+/g,'');
+                        }else{
+                            v=v.replace(/\+/g,'');
+                        }
+                        this.value=v;
+                    ">
+            </div>
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
@@ -2148,13 +2195,13 @@ static const char *htmlPage() {
 <script>
 var tabLabels = {
   'dashboard': { title: 'Dashboard', subtitle: 'System Overview & Status' },
-  'digital': { title: 'DI Config', subtitle: 'Digital Input Configuration' },
-  'analog': { title: 'AI Config', subtitle: 'Analog Input Configuration' },
-  'relays': { title: 'DO Config', subtitle: 'Relay Output Configuration' },
-  'phones': { title: 'Contact Config', subtitle: 'Manage SMS Recipients' },
-  'network': { title: 'Network Configuration', subtitle: 'Ethernet & WiFi Settings' },
-  'sysconfig': { title: 'System Config', subtitle: 'System Information & Settings' },
-  'diag': { title: 'Diagnostics', subtitle: 'System Health & Logs' }
+  'digital': { title: 'DI Config'},
+  'analog': { title: 'AI Config'},
+  'relays': { title: 'DO Config'},
+  'phones': { title: 'Contact Config'},
+  'network': { title: 'Network Configuration'},
+  'sysconfig': { title: 'System Config'},
+  'diag': { title: 'Diagnostics',}
 };
 
 function switchToTab(tabName) {
@@ -2272,6 +2319,21 @@ function switchDI(index){
   document.getElementById('di_return_sms').checked = cfg.return_sms_enabled;
   document.getElementById('di_alarm_msg').value = cfg.alarm_message || '';
   document.getElementById('di_return_msg').value = cfg.return_message || '';
+  
+  // Set selected recipients based on bitmask
+  var di_sel = document.getElementById('di_recipients_select');
+  if (di_sel) {
+  var selectedIndices =
+  decodeBitmask(cfg.selected_contacts || 0);
+  di_sel.querySelectorAll('.recipient-checkbox')
+    .forEach(function(cb) {
+      cb.checked =
+        selectedIndices.indexOf(
+          parseInt(cb.value)
+        ) >= 0;
+    });
+}
+  
   window.current_di_index = index;
   localStorage.setItem('selectedDIIndex', index);
 }
@@ -2289,14 +2351,26 @@ function saveDIConfig(){
   form_data.append('return_sms_enabled', document.getElementById('di_return_sms').checked ? '1' : '0');
   form_data.append('alarm_message', document.getElementById('di_alarm_msg').value.trim());
   form_data.append('return_message', document.getElementById('di_return_msg').value.trim());
-  form_data.append('selected_contacts', 0);
+  
+  // Encode selected recipients into bitmask
+  var di_sel = document.getElementById('di_recipients_select');
+var selectedIndices = [];
+if (di_sel) {
+  di_sel.querySelectorAll(
+    '.recipient-checkbox:checked'
+  ).forEach(function(cb) {
+    selectedIndices.push(cb.value);
+  });
+}
+var bitmask = encodeBitmask(selectedIndices);
+form_data.append('selected_contacts', bitmask);
   
   var status_el = document.getElementById('di_status');
   fetch('/api/digital-input-config', { method:'POST', body:form_data })
     .then(r=>r.json())
     .then(d=>{ 
       if(d.success) {
-        di_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),normally_closed:form_data.get('normally_closed')==='1',tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:0};
+        di_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),normally_closed:form_data.get('normally_closed')==='1',tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:bitmask};
         status_el.textContent = 'DI' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {
@@ -2315,6 +2389,68 @@ function saveDIConfig(){
 
 var ai_configs = [];
 var do_configs = [];
+var event_recipients = [];
+
+// Helper: Convert bitmask to selected indices array
+function decodeBitmask(bitmask) {
+  var selected = [];
+  for (var i = 0; i < 5; i++) {
+    if ((bitmask & (1 << i)) !== 0) selected.push(i);
+  }
+  return selected;
+}
+
+// Helper: Convert selected indices array to bitmask
+function encodeBitmask(selectedIndices) {
+  var bitmask = 0;
+  for (var i = 0; i < selectedIndices.length; i++) {
+    var idx = parseInt(selectedIndices[i]);
+    if (!isNaN(idx) && idx >= 0 && idx < 5) {
+      bitmask |= (1 << idx);
+    }
+  }
+  return bitmask;
+}
+
+// Load recipients and populate all three dropdowns
+function loadRecipients(){
+  fetch('/api/contacts/recipients').then(r=>r.json()).then(d=>{
+    if (d.recipients && Array.isArray(d.recipients)) {
+      event_recipients = d.recipients;
+      var di_sel = document.getElementById('di_recipients_select');
+      var ai_sel = document.getElementById('ai_recipients_select');
+      var relay_sel = document.getElementById('relay_recipients_select');
+      
+      // Clear existing options and rebuild
+      [di_sel, ai_sel, relay_sel].forEach(function(sel) {
+        if (!sel) return;
+        sel.innerHTML = '';
+        if (d.recipients.length === 0) {
+        sel.innerHTML =
+        '<div style="color:#999">(no recipients configured)</div>';
+        } else {
+          d.recipients.forEach(function(r, idx) {
+          if (!r.enabled) return;
+          var label = document.createElement('label');
+          label.style.display = 'block';
+          label.style.marginBottom = '6px';
+          label.style.cursor = 'pointer';
+          
+          label.innerHTML =
+          '<input type="checkbox" class="recipient-checkbox" value="' +
+          idx +
+          '" style="margin-right:8px">' +
+          r.name +
+          ' (' +
+          r.number +
+          ')';
+          sel.appendChild(label);
+          });
+        }
+      });
+    }
+  }).catch(e=>console.log('recipients load failed', e));
+}
 
 function getAIUnitOptions(){
   var sel = document.getElementById('ai_unit_select');
@@ -2395,6 +2531,23 @@ function switchAI(index){
   document.getElementById('ai_return_sms').checked = cfg.return_sms_enabled;
   document.getElementById('ai_alarm_msg').value = cfg.alarm_message || '';
   document.getElementById('ai_return_msg').value = cfg.return_message || '';
+  
+  // Set selected recipients based on bitmask
+  var ai_sel = document.getElementById('ai_recipients_select');
+
+if (ai_sel) {
+  var selectedIndices =
+    decodeBitmask(cfg.selected_contacts || 0);
+
+  ai_sel.querySelectorAll('.recipient-checkbox')
+    .forEach(function(cb) {
+      cb.checked =
+        selectedIndices.indexOf(
+          parseInt(cb.value)
+        ) >= 0;
+    });
+}
+  
   window.current_ai_index = index;
   localStorage.setItem('selectedAIIndex', index);
 }
@@ -2424,14 +2577,26 @@ function saveAIConfig(){
   form_data.append('return_sms_enabled', document.getElementById('ai_return_sms').checked ? '1' : '0');
   form_data.append('alarm_message', document.getElementById('ai_alarm_msg').value.trim());
   form_data.append('return_message', document.getElementById('ai_return_msg').value.trim());
-  form_data.append('selected_contacts', 0);
+  
+  // Encode selected recipients into bitmask
+  var ai_sel = document.getElementById('ai_recipients_select');
+var selectedIndices = [];
+if (ai_sel) {
+  ai_sel.querySelectorAll(
+    '.recipient-checkbox:checked'
+  ).forEach(function(cb) {
+    selectedIndices.push(cb.value);
+  });
+}
+var bitmask = encodeBitmask(selectedIndices);
+form_data.append('selected_contacts', bitmask);
   
   var status_el = document.getElementById('ai_status');
   fetch('/api/analog-input-config', { method:'POST', body:form_data })
     .then(r=>r.json())
     .then(d=>{ 
       if(d.success) {
-        ai_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),engineering_unit:form_data.get('engineering_unit'),scale_low:parseFloat(form_data.get('scale_low')),scale_high:parseFloat(form_data.get('scale_high')),alarm_type:alarmType,set_point:parseFloat(form_data.get('set_point')),reset_point:parseFloat(form_data.get('reset_point')),tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:0};
+        ai_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),engineering_unit:form_data.get('engineering_unit'),scale_low:parseFloat(form_data.get('scale_low')),scale_high:parseFloat(form_data.get('scale_high')),alarm_type:alarmType,set_point:parseFloat(form_data.get('set_point')),reset_point:parseFloat(form_data.get('reset_point')),tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:bitmask};
         status_el.textContent = 'AI' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {
@@ -2481,6 +2646,26 @@ function switchDO(index){
   document.getElementById('do_sms_control').checked = cfg.sms_control_enabled;
   document.getElementById('do_alarm_control').checked = cfg.alarm_control_enabled;
   document.getElementById('do_alarm_source').value = cfg.alarm_source || 0;
+  
+  // Set selected recipients based on bitmask
+  var relay_sel = document.getElementById('relay_recipients_select');
+
+if (relay_sel) {
+
+  var selectedIndices =
+    decodeBitmask(cfg.selected_contacts || 0);
+
+  relay_sel.querySelectorAll('.recipient-checkbox')
+    .forEach(function(cb) {
+
+      cb.checked =
+        selectedIndices.indexOf(
+          parseInt(cb.value)
+        ) >= 0;
+
+    });
+}
+  
   window.current_do_index = index;
   localStorage.setItem('selectedDOIndex', index);
 }
@@ -2496,12 +2681,31 @@ function saveDOConfig(){
   form_data.append('alarm_control_enabled', document.getElementById('do_alarm_control').checked ? '1' : '0');
   form_data.append('alarm_source', document.getElementById('do_alarm_source').value);
   
+  // Encode selected recipients into bitmask
+  var relay_sel = document.getElementById('relay_recipients_select');
+var selectedIndices = [];
+
+if (relay_sel) {
+
+  relay_sel.querySelectorAll(
+    '.recipient-checkbox:checked'
+  ).forEach(function(cb) {
+
+    selectedIndices.push(cb.value);
+
+  });
+
+}
+
+var bitmask = encodeBitmask(selectedIndices);
+form_data.append('selected_contacts', bitmask);
+  
   var status_el = document.getElementById('do_status');
   fetch('/api/relay-config', { method:'POST', body:form_data })
     .then(r=>r.json())
     .then(d=>{
       if(d.success) {
-        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),default_power_up_state:form_data.get('default_power_up_state')==='1',sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source'))};
+        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),default_power_up_state:form_data.get('default_power_up_state')==='1',sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:bitmask};
         status_el.textContent = 'DO' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {
@@ -2563,6 +2767,7 @@ function restartNtp(){
 
 loadDashboard();
 setInterval(loadDashboard, 5000);
+loadRecipients();
 
 // Tab restoration logic:
 // - First page load (fresh login): Start at Dashboard

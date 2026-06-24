@@ -1562,7 +1562,8 @@ static const char *htmlPage() {
   body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:#0f172a}
   .layout{display:flex;min-height:100vh}
   .sidebar{width:240px;background:#fff;border-right:1px solid #e6eef7;padding:20px}
-  .brand{font-weight:700;color:var(--primary);font-size:18px;margin-bottom:12px}
+  .brand{font-weight:700;color:var(--primary);font-size:18px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .brand img{width:32px;height:32px;object-fit:contain;flex-shrink:0}
   .nav{list-style:none;padding:0;margin:0}
   .nav li{padding:10px 12px;border-radius:8px;color:#475569;cursor:pointer;margin-bottom:6px}
   .nav li.active{background:#e8f6ff;color:var(--primary);font-weight:600}
@@ -1596,13 +1597,12 @@ static const char *htmlPage() {
 <body>
   <div class="layout">
     <div class="sidebar">
-      <div class="brand">RAMS</div>
+      <div class="brand"><img src="/Gaurangalogo.png?v=2" alt="Logo">RAMS</div>
       <ul class="nav" id="nav">
         <li data-tab="dashboard" class="active">Dashboard</li>
         <li data-tab="digital">DI Config</li>
         <li data-tab="analog">AI Config</li>
         <li data-tab="relays">DO Config</li>
-        <!-- Alarm Management removed -->
         <li data-tab="phones">Contact Config</li>
         <li data-tab="network">Network Configuration</li>
         <li data-tab="sysconfig">System Config</li>

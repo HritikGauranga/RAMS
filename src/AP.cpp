@@ -2113,23 +2113,7 @@ static const char *htmlPage() {
             </div>
           </div>
 
-          <div class="form-section">
-            <h3>Real Time Clock (RTC)</h3>
-            <div class="field">
-              <label>Time Zone</label>
-              <select id="timezone" class="input">
-                <option value="UTC0">UTC</option>
-                <option value="GMT0BST,M3.5.0/01:00:00,M10.5.0/02:00:00">Europe/London</option>
-                <option value="CET-1CEST,M3.5.0/02:00:00,M10.5.0/03:00:00">Europe/Berlin</option>
-                <option value="IST-5:30">Asia/Kolkata</option>
-                <option value="EST5EDT,M3.2.0/02:00:00,M11.1.0/02:00:00">America/New_York</option>
-                <option value="AEST-10AEDT,M10.1.0/02:00:00,M4.1.0/03:00:00">Australia/Sydney</option>
-              </select>
-            </div>
-            <div class="form-actions">
-              <button class="btn" onclick="restartNtp()">Restart NTP Service</button>
-            </div>
-          </div>
+         </div>
         </div>
       </div>
       <div id="diag" class="tab" style="display:none"><div class="panel"><h2>Diagnostics</h2><div class="subtitle">System diagnostics and status (placeholder).</div></div></div>
@@ -2699,14 +2683,6 @@ function saveSystemConfig(){
   fetch('/api/system-config', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(d=>{ if (d.success) showStatus('Saved', true); else showStatus(d.error||'Save failed', false); })
     .catch(e=>showStatus('Save failed: '+e.message, false));
-}
-
-function restartNtp(){
-  var p = new URLSearchParams();
-  p.append('timezone', document.getElementById('timezone').value);
-  fetch('/api/restart-ntp', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
-    .then(r=>r.json()).then(d=>{ if (d.success) showStatus('NTP restarted', true); else showStatus(d.error||'Restart failed', false); })
-    .catch(e=>showStatus('Restart failed: '+e.message, false));
 }
 
 loadDashboard();

@@ -1625,7 +1625,7 @@ static const char *htmlPage() {
           <h2 style="margin-bottom:15px">System Information</h2>
           <div class="grid" id="dashGrid">
             <div class="stat"><div class="label">Serial Number</div><div class="value" id="s_serial">Loading...</div></div>
-            <div class="stat"><div class="label">Site & Location</div><div class="value" id="s_site">Loading...</div></div>
+            <div class="stat"><div class="label">Site Name & Location</div><div class="value" id="s_site">Loading...</div></div>
             <div class="stat"><div class="label">Wi-Fi AP IP</div><div class="value" id="s_apip">Loading...</div></div>
             <div class="stat"><div class="label">Ethernet IP</div><div class="value" id="s_ethip">Loading...</div></div>
             <div class="stat"><div class="label">DHCP Mode</div><div class="value" id="s_dhcp">Loading...</div></div>
@@ -1673,7 +1673,7 @@ static const char *htmlPage() {
           </div>
 
           <div>
-            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Relay Outputs</h3>
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Digital Outputs</h3>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
@@ -1739,12 +1739,22 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Alarm (seconds)</label>
-                    <input type="number" id="di_tta" min="1" max="65535" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="number"
+                    id="di_tta"
+                    min="1"
+                    max="65535"
+                    oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">                    
                     <div style="font-size:11px;color:#999;margin-top:4px">Duration before triggering alarm (1-65535s)</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Return (seconds)</label>
-                    <input type="number" id="di_ttr" min="1" max="65535" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="number"
+                    id="di_ttr"
+                    min="1"
+                    max="65535"
+                    oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">                    
                     <div style="font-size:11px;color:#999;margin-top:4px">Duration after alarm to return (1-65535s)</div>
                   </div>
                 </div>
@@ -1848,20 +1858,34 @@ static const char *htmlPage() {
               
               <!-- Scaling Configuration Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Scaling (4-20mA)</h3>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-                  <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale Low (4mA)</label>
-                    <input type="number" id="ai_scale_low" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 4mA</div>
-                  </div>
-                  <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale High (20mA)</label>
-                    <input type="number" id="ai_scale_high" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 20mA</div>
-                  </div>
-                </div>
+
+              <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Scaling (4-20mA)</h3>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale Low (4mA)</label>
+              <input type="number"
+              id="ai_scale_low"
+              min="-999999"
+              max="999999"
+              step="0.01"
+              oninput="if(this.value>999999)this.value=999999;if(this.value<-999999)this.value=-999999"
+              style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 4mA (-999999 to 999999)</div>
               </div>
+              <div>
+              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale High (20mA)</label>
+              <input type="number"
+              id="ai_scale_high"
+              min="-999999"
+              max="999999"
+              step="0.01"
+              oninput="if(this.value>999999)this.value=999999;if(this.value<-999999)this.value=-999999"
+              style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 20mA (-999999 to 999999)</div>
+            </div>
+
+          </div>
+        </div>
               
               <!-- Alarm Type Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
@@ -1892,23 +1916,35 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Set Point</label>
-                    <input type="number" id="ai_set_point" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="number"
+                    id="ai_set_point"
+                    step="0.01"
+                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
                     <div style="font-size:11px;color:#999;margin-top:4px">Alarm triggers at this value</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Reset Point</label>
-                    <input type="number" id="ai_reset_point" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="number"
+                    id="ai_reset_point"
+                    step="0.01"
+                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
                     <div style="font-size:11px;color:#999;margin-top:4px">Alarm clears at this value</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Alarm (seconds)</label>
-                    <input type="number" id="ai_tta" min="1" max="65535" value="1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm triggers</div>
+                    <input type="number" id="ai_tta" min="1" max="65535" value="1"
+                    oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm triggers  (1-65535s)</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Return (seconds)</label>
-                    <input type="number" id="ai_ttr" min="1" max="65535" value="1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm clears</div>
+                    <input type="number" id="ai_ttr" min="1" max="65535" value="1"
+                    oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm clears (1-65535s)</div>
                   </div>
                 </div>
               </div>
@@ -2157,12 +2193,20 @@ static const char *htmlPage() {
             <div class="form-grid">
               <div class="field">
                 <label>Site Name</label>
-                <input id="site_name" type="text" class="input">
-              </div>
+                <input id="site_name"
+                type="text"
+                class="input"
+                maxlength="63"
+                oninput="if(this.value.length>63)this.value=this.value.slice(0,63)">
+                </div>
               <div class="field full">
                 <label>Site Address</label>
-                <textarea id="site_address" rows="3" class="input"></textarea>
-              </div>
+                <textarea id="site_address"
+                rows="3"
+                class="input"
+                maxlength="127"
+                oninput="if(this.value.length>127)this.value=this.value.slice(0,127)"></textarea>
+                </div>
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveSystemConfig()">Save Site Details</button>

@@ -9,6 +9,9 @@ static unsigned long lastReinitAttemptMs = 0;
 static unsigned long lastNotReadyLogMs = 0;
 static bool simMissingLatched = false;
 static unsigned long lastSimRecheckMs = 0;
+static unsigned long lastSmsCheckMs = 0;
+
+
 
 // ---------------------------------------------------------------------------
 // Serial AT helpers
@@ -91,6 +94,200 @@ static String sendAT(const String &cmd, int timeout) {
   String response = readSerialATResponse((unsigned long)timeout);
   Serial.println(response.length() ? "[AT] << " + response : "[AT] << [NO RESPONSE]");
   return response;
+}
+
+struct PulseSlot {
+  size_t relayIdx;
+  unsigned long offAtMs;
+};
+static PulseSlot pulseSlots[RELAY_OUTPUT_COUNT];
+
+static void resetPulseSlots() {
+  for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+    pulseSlots[i].relayIdx = (size_t)-1;
+    pulseSlots[i].offAtMs = 0;
+  }
+}
+
+static void schedulePulse(size_t relayIdx, unsigned long seconds) {
+  for (auto &p : pulseSlots) {
+    if (p.relayIdx == relayIdx && p.offAtMs > 0) {
+      p.offAtMs = millis() + seconds * 1000;
+      return;
+    }
+  }
+  for (auto &p : pulseSlots) {
+    if (p.relayIdx == (size_t)-1) {
+      p.relayIdx = relayIdx;
+      p.offAtMs = millis() + seconds * 1000;
+      return;
+    }
+  }
+}
+
+static void checkPulses() {
+  unsigned long now = millis();
+  for (auto &p : pulseSlots) {
+    if (p.offAtMs > 0 && now >= p.offAtMs) {
+      Shared_setRelayState(p.relayIdx, false);
+      Serial.printf("[PULSE] Relay %u auto OFF\n", (unsigned)p.relayIdx);
+      p.relayIdx = (size_t)-1;
+      p.offAtMs = 0;
+    }
+  }
+}
+
+static void processRelayCommand(const String &sender, const String &body) {
+  String content = body;
+  int firstPercent = content.indexOf('%');
+  int lastPercent = content.lastIndexOf('%');
+  if (firstPercent >= 0 && lastPercent > firstPercent) {
+    content = content.substring(firstPercent + 1, lastPercent);
+  } else if (firstPercent >= 0) {
+    content = content.substring(firstPercent + 1);
+  }
+  content.trim();
+
+  int c1 = content.indexOf(',');
+  int c2 = content.indexOf(',', c1 + 1);
+  int c3 = content.indexOf(',', c2 + 1);
+  if (c1 < 0 || c2 < 0 || c3 < 0) {
+    Serial.println("[SMS] Bad relay command format: " + body);
+    return;
+  }
+
+  String pin = content.substring(0, c1);
+  String relayName = content.substring(c1 + 1, c2);
+  String state = content.substring(c2 + 1, c3);
+  String onTimeStr = content.substring(c3 + 1);
+  pin.trim(); relayName.trim(); state.trim(); onTimeStr.trim();
+
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return;
+  bool authorized = false;
+  for (size_t i = 0; i < rec.count; ++i) {
+    if (!rec.items[i].enabled) continue;
+    String num = String(rec.items[i].number);
+    if (sender == num || sender == "+" + num) {
+      authorized = true;
+      break;
+    }
+    if (num.startsWith("+")) num = num.substring(1);
+    if (sender == num || sender == "+" + num) {
+      authorized = true;
+      break;
+    }
+  }
+  if (!authorized) {
+    Serial.println("[SMS] Unauthorized sender for relay: " + sender);
+    return;
+  }
+
+  SIMConfig simCfg = {};
+  Shared_getSIMConfig(simCfg);
+  String storedPin = String(simCfg.relay_pin);
+  storedPin.trim();
+  if (storedPin.length() == 0 || pin != storedPin) {
+    Serial.println("[SMS] Invalid PIN from: " + sender);
+    return;
+  }
+
+  int relayIdx = -1;
+  for (int i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+    RelayConfig cfg = {};
+    Shared_getRelayConfig(i, cfg);
+    String name = String(cfg.name);
+    name.trim();
+    if (name.length() > 0 && name.equalsIgnoreCase(relayName)) {
+      relayIdx = i;
+      break;
+    }
+  }
+  if (relayIdx < 0) {
+    Serial.println("[SMS] Unknown relay: " + relayName);
+    return;
+  }
+
+  RelayConfig cfg = {};
+  Shared_getRelayConfig(relayIdx, cfg);
+  if (!cfg.enabled) {
+    Serial.println("[SMS] Relay disabled: " + relayName);
+    return;
+  }
+
+  bool isOn = state.equalsIgnoreCase("on");
+  bool isOff = state.equalsIgnoreCase("off");
+
+  if (isOn) {
+    Shared_setRelayState(relayIdx, true);
+    Serial.println("[SMS] Relay " + relayName + " ON");
+    if (onTimeStr.length() > 0 && !onTimeStr.equals("0")) {
+      unsigned long onTime = onTimeStr.toInt();
+      if (onTime > 0 && onTime <= 65535) {
+        schedulePulse(relayIdx, onTime);
+      }
+    }
+  } else if (isOff) {
+    Shared_setRelayState(relayIdx, false);
+    Serial.println("[SMS] Relay " + relayName + " OFF");
+    if (!onTimeStr.equals("0")) {
+      for (auto &p : pulseSlots) {
+        if (p.relayIdx == (size_t)relayIdx) {
+          p.relayIdx = (size_t)-1;
+          p.offAtMs = 0;
+        }
+      }
+    }
+  } else {
+    Serial.println("[SMS] Invalid state: " + state);
+  }
+}
+
+static void checkAndProcessSMS() {
+  if (!modemReady) return;
+
+  String resp = sendAT("AT+CMGL=\"ALL\"", 5000);
+  if (resp.indexOf("+CMGL:") < 0) return;
+
+  int pos = 0;
+  int currentIndex = -1;
+  String sender = "";
+  String body = "";
+
+  while (pos < resp.length()) {
+    int next = resp.indexOf('\n', pos);
+    if (next < 0) next = resp.length();
+    String line = resp.substring(pos, next);
+    line.trim();
+
+    if (line.startsWith("+CMGL:")) {
+      if (currentIndex >= 0) {
+        int cmdIdx = body.indexOf("Set Relay%");
+        if (cmdIdx >= 0) {
+          processRelayCommand(sender, body.substring(cmdIdx));
+        }
+        sendAT("AT+CMGD=" + String(currentIndex), 2000);
+      }
+      int idxStart = line.indexOf(' ');
+      int idxEnd = line.indexOf(',', idxStart);
+      currentIndex = line.substring(idxStart + 1, idxEnd).toInt();
+      int q1 = line.indexOf('"', idxEnd);
+      int q2 = line.indexOf('"', q1 + 1);
+      sender = (q1 >= 0 && q2 >= 0) ? line.substring(q1 + 1, q2) : "";
+      body = "";
+    } else if (currentIndex >= 0 && line.length() > 0 && line != "OK" && !line.startsWith("+CMGL")) {
+      body += line + "\n";
+    }
+    pos = next + 1;
+  }
+
+  if (currentIndex >= 0) {
+    int cmdIdx = body.indexOf("Set Relay%");
+    if (cmdIdx >= 0) {
+      processRelayCommand(sender, body.substring(cmdIdx));
+    }
+    sendAT("AT+CMGD=" + String(currentIndex), 2000);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +449,8 @@ static void initModem() {
   }
 
   sendAT("AT+CMEE=2", 2000);
+  sendAT("AT+CNMI=2,1,0,0,0", 2000);
+  sendAT("AT+CMGD=1,4", 2000);
   bool simOk     = modemSimReady();
   bool networkOk = simOk && waitForNetwork();
   setModemReady(simOk && networkOk);
@@ -416,6 +615,7 @@ int8_t Modem_getSignalStrength() {
 
 void Modem_task(void *pvParameters) {
   (void)pvParameters;
+  resetPulseSlots();
 
   // Blocking init — only affects core 0, core 1 tasks run freely
   initModem();
@@ -427,10 +627,10 @@ void Modem_task(void *pvParameters) {
   for (;;) {
     scanTriggerEdges(previousState);
 
+    unsigned long now = millis();
+
     if (takeNextPendingSlot(slotToProcess)) {
       if (!modemReady) {
-        unsigned long now = millis();
-
         // If SIM was last seen as missing, run a full modem init sequence
         // so hot-inserted SIMs get detected through the normal bring-up path.
         if (simMissingLatched) {
@@ -465,6 +665,13 @@ void Modem_task(void *pvParameters) {
       int16_t result = dispatchMessage(slotToProcess);
       Shared_writeAlarmResult(slotToProcess, result);
     }
+
+    if (now - lastSmsCheckMs >= 5000) {
+      lastSmsCheckMs = now;
+      checkAndProcessSMS();
+    }
+
+    checkPulses();
 
     vTaskDelay(pdMS_TO_TICKS(25));
   }

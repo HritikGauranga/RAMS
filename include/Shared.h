@@ -93,6 +93,7 @@ struct RelayConfig {
 struct SIMConfig {
   char service_provider[64];   // e.g., "Vodafone", "AT&T"
   char phone_number[PHONE_NUMBER_LENGTH];  // User's SIM phone number
+  char relay_pin[16];          // PIN for SMS relay control
 };
 
 struct SystemSnapshot {
@@ -135,13 +136,7 @@ bool Shared_loadGatewaySettings();
 bool Shared_getGatewaySettings(GatewaySettings &settings);
 bool Shared_saveGatewaySettings(const GatewaySettings &settings);
 
-// Legacy phone-list APIs removed. Use Contact-based APIs instead.
-
-// New contact-based API: authorized contacts (can send commands)
-bool Shared_getAuthorizedContacts(ContactList &out);
-bool Shared_saveAuthorizedContacts(const ContactList &list);
-
-// Event recipients (receive event SMS)
+// Contact-based API: event recipients (also authorized for SMS relay control)
 bool Shared_getRecipientContacts(ContactList &out);
 bool Shared_saveRecipientContacts(const ContactList &list);
 

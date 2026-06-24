@@ -21,7 +21,6 @@ static int16_t digitalInputs[DIGITAL_INPUT_COUNT] = {0};
 static float   analogInputs[ANALOG_INPUT_COUNT]   = {0.0f};
 static bool    relayStates[RELAY_OUTPUT_COUNT]    = {false, false};
 
-static ContactList authorizedContacts = {0};
 static ContactList recipientContacts = {0};
 
 static DigitalInputConfig digitalInputConfig[DIGITAL_INPUT_COUNT] = {};
@@ -249,89 +248,83 @@ void Shared_init() {
         }
       }
     }
-    // Try loading new contacts.json
-    if (LittleFS.exists("/contacts.json")) {
-      File f = LittleFS.open("/contacts.json", "r");
-      if (f) {
-        String json = f.readString();
-        f.close();
-        // Minimal JSON parsing to avoid adding a JSON library.
-        // Expecting: {"authorized":[{...}],"recipients":[{...}]}
-        auto extractArray = [&](const String &root, const String &name) {
-          ContactList list = {0};
-          int idx = root.indexOf('"' + name + '"');
-          if (idx < 0) return list;
-          int a = root.indexOf('[', idx);
-          if (a < 0) return list;
-          int b = root.indexOf(']', a);
-          if (b < 0) return list;
-          String arr = root.substring(a + 1, b);
-          int pos = 0;
-          while (pos < arr.length() && list.count < MAX_PHONE_PER_LIST) {
-            int objStart = arr.indexOf('{', pos);
-            if (objStart < 0) break;
-            int objEnd = arr.indexOf('}', objStart);
-            if (objEnd < 0) break;
-            String obj = arr.substring(objStart + 1, objEnd);
-            // parse fields: enabled, name, number
-            Contact c = {};
-            int enIdx = obj.indexOf("\"enabled\"");
-            if (enIdx >= 0) {
-              int colon = obj.indexOf(':', enIdx);
-              if (colon >= 0) {
-                String val = trimCopy(obj.substring(colon + 1));
-                if (val.startsWith("true")) c.enabled = true;
-                else c.enabled = false;
-              }
-            }
-            int nameIdx = obj.indexOf("\"name\"");
-            if (nameIdx >= 0) {
-              int colon = obj.indexOf(':', nameIdx);
-              if (colon >= 0) {
-                int q1 = obj.indexOf('"', colon + 1);
-                int q2 = obj.indexOf('"', q1 + 1);
-                if (q1 >= 0 && q2 >= 0) {
-                  String n = obj.substring(q1 + 1, q2);
-                  n.trim();
-                  n.toCharArray(c.name, sizeof(c.name));
+        // Load new contacts.json (recipients only)
+        if (LittleFS.exists("/contacts.json")) {
+          File f = LittleFS.open("/contacts.json", "r");
+          if (f) {
+            String json = f.readString();
+            f.close();
+            auto extractArray = [&](const String &root, const String &name) {
+              ContactList list = {0};
+              int idx = root.indexOf('"' + name + '"');
+              if (idx < 0) return list;
+              int a = root.indexOf('[', idx);
+              if (a < 0) return list;
+              int b = root.indexOf(']', a);
+              if (b < 0) return list;
+              String arr = root.substring(a + 1, b);
+              int pos = 0;
+              while (pos < arr.length() && list.count < MAX_PHONE_PER_LIST) {
+                int objStart = arr.indexOf('{', pos);
+                if (objStart < 0) break;
+                int objEnd = arr.indexOf('}', objStart);
+                if (objEnd < 0) break;
+                String obj = arr.substring(objStart + 1, objEnd);
+                Contact c = {};
+                int enIdx = obj.indexOf("\"enabled\"");
+                if (enIdx >= 0) {
+                  int colon = obj.indexOf(':', enIdx);
+                  if (colon >= 0) {
+                    String val = trimCopy(obj.substring(colon + 1));
+                    if (val.startsWith("true")) c.enabled = true;
+                    else c.enabled = false;
+                  }
                 }
-              }
-            }
-              int numIdx = obj.indexOf("\"number\"");
-              bool hasValidNumber = false;
-              if (numIdx >= 0) {
-                int colon = obj.indexOf(':', numIdx);
-                if (colon >= 0) {
-                  int q1 = obj.indexOf('"', colon + 1);
-                  int q2 = obj.indexOf('"', q1 + 1);
-                  if (q1 >= 0 && q2 >= 0) {
-                    String n = obj.substring(q1 + 1, q2);
-                    n.trim();
-                    if (isValidPhoneFormat(n)) {
-                      n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-                      hasValidNumber = true;
+                int nameIdx = obj.indexOf("\"name\"");
+                if (nameIdx >= 0) {
+                  int colon = obj.indexOf(':', nameIdx);
+                  if (colon >= 0) {
+                    int q1 = obj.indexOf('"', colon + 1);
+                    int q2 = obj.indexOf('"', q1 + 1);
+                    if (q1 >= 0 && q2 >= 0) {
+                      String n = obj.substring(q1 + 1, q2);
+                      n.trim();
+                      n.toCharArray(c.name, sizeof(c.name));
                     }
                   }
                 }
+                int numIdx = obj.indexOf("\"number\"");
+                bool hasValidNumber = false;
+                if (numIdx >= 0) {
+                  int colon = obj.indexOf(':', numIdx);
+                  if (colon >= 0) {
+                    int q1 = obj.indexOf('"', colon + 1);
+                    int q2 = obj.indexOf('"', q1 + 1);
+                    if (q1 >= 0 && q2 >= 0) {
+                      String n = obj.substring(q1 + 1, q2);
+                      n.trim();
+                      if (isValidPhoneFormat(n)) {
+                        n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+                        hasValidNumber = true;
+                      }
+                    }
+                  }
+                }
+                if (hasValidNumber) {
+                  list.items[list.count++] = c;
+                }
+                pos = objEnd + 1;
               }
-              // Only keep entries that include a valid non-empty phone number
-              if (hasValidNumber) {
-                list.items[list.count++] = c;
-              }
-            pos = objEnd + 1;
-          }
-          return list;
-        };
+              return list;
+            };
 
-        ContactList auth = extractArray(json, String("authorized"));
-        ContactList recs = extractArray(json, String("recipients"));
-        if (Shared_lockState(pdMS_TO_TICKS(100))) {
-          if (auth.count > 0) authorizedContacts = auth;
-          if (recs.count > 0) recipientContacts = recs;
-          Shared_unlockState();
+            ContactList recs = extractArray(json, String("recipients"));
+            if (Shared_lockState(pdMS_TO_TICKS(100))) {
+              if (recs.count > 0) recipientContacts = recs;
+              Shared_unlockState();
+            }
+          }
         }
-      }
-    }
 
     Shared_unlockFileSystem();
   }
@@ -554,13 +547,6 @@ bool Shared_saveGatewaySettings(const GatewaySettings &settings) {
 // Contact lists + alarm results
 // ---------------------------------------------------------------------------
 
-bool Shared_getAuthorizedContacts(ContactList &out) {
-  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
-  out = authorizedContacts;
-  Shared_unlockState();
-  return true;
-}
-
 bool Shared_getRecipientContacts(ContactList &out) {
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
   out = recipientContacts;
@@ -597,63 +583,7 @@ static String escapeJsonString(const String &s) {
   return out;
 }
 
-bool Shared_saveAuthorizedContacts(const ContactList &list) {
-  // Filter provided list: drop empty or invalid numbers
-  ContactList filtered = {};
-  for (size_t i = 0; i < list.count; ++i) {
-    String num = String(list.items[i].number);
-    num.trim();
-    if (num.length() == 0) continue; // skip blanks
-    if (!isValidPhoneFormat(num)) return false;
-    if (filtered.count >= MAX_PHONE_PER_LIST) return false;
-    filtered.items[filtered.count++] = list.items[i];
-  }
-
-  // Also ensure recipients we write are filtered (drop blanks)
-  ContactList otherFiltered = {};
-  for (size_t i = 0; i < recipientContacts.count; ++i) {
-    String num = String(recipientContacts.items[i].number);
-    num.trim();
-    if (num.length() == 0) continue;
-    if (!isValidPhoneFormat(num)) continue;
-    if (otherFiltered.count >= MAX_PHONE_PER_LIST) break;
-    otherFiltered.items[otherFiltered.count++] = recipientContacts.items[i];
-  }
-
-  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
-  File out = LittleFS.open("/contacts.json", "w");
-  if (!out) { Shared_unlockFileSystem(); return false; }
-  out.print("{");
-  out.print("\"authorized\":[");
-  for (size_t i = 0; i < filtered.count; ++i) {
-    if (i) out.print(',');
-    String name = escapeJsonString(String(filtered.items[i].name));
-    String num = escapeJsonString(String(filtered.items[i].number));
-    out.print("{\"enabled\":"); out.print(filtered.items[i].enabled ? "true" : "false");
-    out.print(",\"name\":\""); out.print(name); out.print("\"");
-    out.print(",\"number\":\""); out.print(num); out.print("\"}");
-  }
-  out.print("],\"recipients\":[");
-  for (size_t i = 0; i < otherFiltered.count; ++i) {
-    if (i) out.print(',');
-    String name = escapeJsonString(String(otherFiltered.items[i].name));
-    String num = escapeJsonString(String(otherFiltered.items[i].number));
-    out.print("{\"enabled\":"); out.print(otherFiltered.items[i].enabled ? "true" : "false");
-    out.print(",\"name\":\""); out.print(name); out.print("\"");
-    out.print(",\"number\":\""); out.print(num); out.print("\"}");
-  }
-  out.print("]}");
-  out.close();
-  Shared_unlockFileSystem();
-
-  if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
-  authorizedContacts = filtered;
-  Shared_unlockState();
-  return true;
-}
-
 bool Shared_saveRecipientContacts(const ContactList &list) {
-  // Filter provided list: drop empty or invalid numbers
   ContactList filtered = {};
   for (size_t i = 0; i < list.count; ++i) {
     String num = String(list.items[i].number);
@@ -664,36 +594,16 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
     filtered.items[filtered.count++] = list.items[i];
   }
 
-  // Ensure authorized contacts we write are filtered as well
-  ContactList otherFiltered = {};
-  for (size_t i = 0; i < authorizedContacts.count; ++i) {
-    String num = String(authorizedContacts.items[i].number);
-    num.trim();
-    if (num.length() == 0) continue;
-    if (!isValidPhoneFormat(num)) continue;
-    if (otherFiltered.count >= MAX_PHONE_PER_LIST) break;
-    otherFiltered.items[otherFiltered.count++] = authorizedContacts.items[i];
-  }
-
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
   File out = LittleFS.open("/contacts.json", "w");
   if (!out) { Shared_unlockFileSystem(); return false; }
-  out.print("{");
-  out.print("\"authorized\":[");
-  for (size_t i = 0; i < otherFiltered.count; ++i) {
-    if (i) out.print(',');
-    String name = escapeJsonString(String(otherFiltered.items[i].name));
-    String num = escapeJsonString(String(otherFiltered.items[i].number));
-    out.print("{\"enabled\":"); out.print(otherFiltered.items[i].enabled ? "true" : "false");
-    out.print(",\"name\":\""); out.print(name); out.print("\"");
-    out.print(",\"number\":\""); out.print(num); out.print("\"}");
-  }
-  out.print("],\"recipients\":[");
+  out.print("{\"authorized\":[],\"recipients\":[");
   for (size_t i = 0; i < filtered.count; ++i) {
     if (i) out.print(',');
     String name = escapeJsonString(String(filtered.items[i].name));
     String num = escapeJsonString(String(filtered.items[i].number));
-    out.print("{\"enabled\":"); out.print(filtered.items[i].enabled ? "true" : "false");
+    out.print("{\"enabled\":");
+    out.print(filtered.items[i].enabled ? "true" : "false");
     out.print(",\"name\":\""); out.print(name); out.print("\"");
     out.print(",\"number\":\""); out.print(num); out.print("\"}");
   }
@@ -720,7 +630,7 @@ bool Shared_getSIMConfig(SIMConfig &out) {
       String json = f.readString();
       f.close();
       
-      // Parse JSON: {"service_provider":"...", "phone_number":"..."}
+      // Parse JSON: {"service_provider":"...", "phone_number":"...", "relay_pin":"..."}
       int provIdx = json.indexOf("\"service_provider\"");
       if (provIdx >= 0) {
         int q1 = json.indexOf('"', provIdx + 19);
@@ -738,6 +648,16 @@ bool Shared_getSIMConfig(SIMConfig &out) {
         if (q1 >= 0 && q2 >= 0) {
           String phone = json.substring(q1 + 1, q2);
           phone.toCharArray(out.phone_number, sizeof(out.phone_number));
+        }
+      }
+      
+      int pinIdx = json.indexOf("\"relay_pin\"");
+      if (pinIdx >= 0) {
+        int q1 = json.indexOf('"', pinIdx + 12);
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q1 >= 0 && q2 >= 0) {
+          String pin = json.substring(q1 + 1, q2);
+          pin.toCharArray(out.relay_pin, sizeof(out.relay_pin));
         }
       }
     }
@@ -758,10 +678,12 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg) {
   
   String provider = escapeJsonString(String(cfg.service_provider));
   String phone = escapeJsonString(String(cfg.phone_number));
+  String pin = escapeJsonString(String(cfg.relay_pin));
   
   f.print("{");
   f.print("\"service_provider\":\""); f.print(provider); f.print("\",");
-  f.print("\"phone_number\":\""); f.print(phone); f.print("\"");
+  f.print("\"phone_number\":\""); f.print(phone); f.print("\",");
+  f.print("\"relay_pin\":\""); f.print(pin); f.print("\"");
   f.print("}");
   f.close();
   Shared_unlockFileSystem();

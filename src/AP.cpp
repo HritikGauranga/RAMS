@@ -817,112 +817,6 @@ static void setupWebServerRoutes() {
   });
 
   // Contact endpoints (authorized & recipients)
-  server->on("/api/contacts/authorized", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    ContactList cl = {};
-    if (!Shared_getAuthorizedContacts(cl)) {
-      request->send(500, "application/json", "{\"error\":\"Read failed\"}");
-      return;
-    }
-    String body = "{\"authorized\": [";
-    for (size_t i = 0; i < cl.count; ++i) {
-      if (i) body += ",";
-      body += "{";
-      body += "\"enabled\":" + String(cl.items[i].enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + escapeJson(String(cl.items[i].name)) + "\",";
-      body += "\"number\":\"" + escapeJson(String(cl.items[i].number)) + "\"";
-      body += "}";
-    }
-    body += "]}";
-    request->send(200, "application/json", body);
-  });
-  server->on("/api/contacts/authorized", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (!isAuthenticated(request)) {
-      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    // Expect body as urlencoded param 'contacts' containing a JSON array.
-    String body = "";
-    if (request->hasParam("contacts", true)) body = request->getParam("contacts", true)->value();
-    if (body.length() == 0) { request->send(400, "application/json", "{\"error\":\"Missing contacts payload\"}"); return; }
-
-    // Parse all objects to count them. Enforce max and validate phone format server-side.
-    ContactList cl = {};
-    int pos = 0;
-    int totalFound = 0;
-    while (true) {
-      int objStart = body.indexOf('{', pos);
-      if (objStart < 0) break;
-      int objEnd = body.indexOf('}', objStart);
-      if (objEnd < 0) break;
-      totalFound++;
-      if (totalFound > (int)MAX_PHONE_PER_LIST) {
-        String err = String("{\"error\":\"Too many contacts (max ") + String(MAX_PHONE_PER_LIST) + " )\"}";
-        request->send(400, "application/json", err);
-        return;
-      }
-
-      String obj = body.substring(objStart + 1, objEnd);
-      Contact c = {};
-      int enIdx = obj.indexOf("\"enabled\"");
-      if (enIdx >= 0) {
-        int colon = obj.indexOf(':', enIdx);
-        if (colon >= 0) {
-          String val = trimCopy(obj.substring(colon + 1));
-          if (val.startsWith("true")) c.enabled = true;
-        }
-      }
-      int nameIdx = obj.indexOf("\"name\"");
-      if (nameIdx >= 0) {
-        int colon = obj.indexOf(':', nameIdx);
-        int q1 = obj.indexOf('"', colon + 1);
-        int q2 = obj.indexOf('"', q1 + 1);
-        if (q1 >= 0 && q2 >= 0) {
-          String n = obj.substring(q1 + 1, q2);
-          n.trim(); n.toCharArray(c.name, sizeof(c.name));
-        }
-      }
-      int numIdx = obj.indexOf("\"number\"");
-      if (numIdx < 0) {
-        String err = String("{\"error\":\"Missing phone number field at contact ") + String(totalFound) + "\"}";
-        request->send(400, "application/json", err);
-        return;
-      }
-      int colon = obj.indexOf(':', numIdx);
-      int q1 = obj.indexOf('"', colon + 1);
-      int q2 = obj.indexOf('"', q1 + 1);
-      if (q1 < 0 || q2 < 0) {
-        String err = String("{\"error\":\"Missing phone number value at contact ") + String(totalFound) + "\"}";
-        request->send(400, "application/json", err);
-        return;
-      }
-      {
-        String n = obj.substring(q1 + 1, q2);
-        n.trim();
-        if (n.length() == 0) {
-          String err = String("{\"error\":\"Empty phone number at contact ") + String(totalFound) + "\"}";
-          request->send(400, "application/json", err);
-          return;
-        }
-        if (!isValidPhoneFormat(n)) {
-          String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}";
-          request->send(400, "application/json", err);
-          return;
-        }
-        n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-      }
-
-      if (cl.count < MAX_PHONE_PER_LIST) cl.items[cl.count++] = c;
-      pos = objEnd + 1;
-    }
-
-    if (!Shared_saveAuthorizedContacts(cl)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
-    request->send(200, "application/json", "{\"success\":true}");
-  });
-
   server->on("/api/contacts/recipients", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     ContactList cl = {};
@@ -1395,7 +1289,8 @@ static void setupWebServerRoutes() {
 
     String body = "{";
     body += "\"service_provider\":\"" + String(cfg.service_provider) + "\",";
-    body += "\"phone_number\":\"" + String(cfg.phone_number) + "\"";
+    body += "\"phone_number\":\"" + String(cfg.phone_number) + "\",";
+    body += "\"relay_pin\":\"" + String(cfg.relay_pin) + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
@@ -1416,6 +1311,11 @@ static void setupWebServerRoutes() {
       String phone = request->getParam("phone_number", true)->value();
       phone.toCharArray(cfg.phone_number, sizeof(cfg.phone_number));
       cfg.phone_number[sizeof(cfg.phone_number) - 1] = '\0';
+    }
+    if (request->hasParam("relay_pin", true)) {
+      String pin = request->getParam("relay_pin", true)->value();
+      pin.toCharArray(cfg.relay_pin, sizeof(cfg.relay_pin));
+      cfg.relay_pin[sizeof(cfg.relay_pin) - 1] = '\0';
     }
 
     if (!Shared_saveSIMConfig(cfg)) {
@@ -2097,13 +1997,9 @@ static const char *htmlPage() {
         <div class="panel">
           <h2>Contact Configuration</h2>
           <div id="phones_status" style="display:none;margin-bottom:12px"></div>
-          <div class="subtitle">Manage Authorized contacts and Event Recipients. Phone numbers accept digits and optional leading '+', up to 15 digits.</div>
+          <div class="subtitle">Manage contacts for SMS event notifications and relay control. Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
 
-          <h3>Authorized Contacts</h3>
-          <div id="auth_list"></div>
-          <button class="btn" onclick="addAuthContact()">Add Authorized</button>
-
-          <h3 style="margin-top:16px">Event Recipients</h3>
+          <h3>Event Recipients</h3>
           <div id="rec_list"></div>
           <button class="btn" onclick="addRecContact()">Add Recipient</button>
 
@@ -2175,7 +2071,11 @@ static const char *htmlPage() {
                         }
                         this.value=v;
                     ">
-            </div>
+                </div>
+                <div class="field">
+                  <label>Relay Control PIN</label>
+                  <input id="sim_relay_pin" type="text" class="input" placeholder="e.g. 1234" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)">
+                </div>
             </div>
             <div class="form-actions">
               <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
@@ -2837,25 +2737,12 @@ function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); 
 const MAX_CONTACTS = 5;
 
 function loadPhones(){
-  // Load both authorized and recipient contacts
-  fetch('/api/contacts/authorized').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
-    if (d.authorized && Array.isArray(d.authorized)) renderContactList('auth_list', d.authorized, true);
-  }).catch(e=>{ if(e!=='auth') console.log('auth load failed', e); });
   fetch('/api/contacts/recipients').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
-    if (d.recipients && Array.isArray(d.recipients)) renderContactList('rec_list', d.recipients, false);
-  }).catch(e=>{ if(e!=='auth') console.log('rec load failed', e); });
+    if (d.recipients && Array.isArray(d.recipients)) renderContactList('rec_list', d.recipients);
+  }).catch(e=>{ if(e!=='auth') console.log('recipients load failed', e); });
 }
 
 function saveContacts(){
-  // collect authorized
-  var authEls = document.querySelectorAll('#auth_list .contact-row');
-  var authArr = [];
-  authEls.forEach(function(el){
-    var name = (el.querySelector('.c_name')||{}).value || '';
-    var num = (el.querySelector('.c_number')||{}).value || '';
-    var en = !!(el.querySelector('.c_enabled')||{}).checked;
-    authArr.push({enabled:en, name:name, number:num});
-  });
   var recEls = document.querySelectorAll('#rec_list .contact-row');
   var recArr = [];
   recEls.forEach(function(el){
@@ -2865,27 +2752,18 @@ function saveContacts(){
     recArr.push({enabled:en, name:name, number:num});
   });
 
-  // simple validation for phone numbers: digits and optional leading '+' and 10-15 digits
   var phoneValid = function(n){ if(!n) return true; var m = n.match(/^\+?[0-9]{10,15}$/); return !!m; };
-  for (var i=0;i<authArr.length;i++) if(!phoneValid(authArr[i].number)){ showSmallStatus('phones_status','Invalid phone in authorized list',false); return; }
-  for (var i=0;i<recArr.length;i++) if(!phoneValid(recArr[i].number)){ showSmallStatus('phones_status','Invalid phone in recipients list',false); return; }
+  for (var i=0;i<recArr.length;i++) if(!phoneValid(recArr[i].number)){ showSmallStatus('phones_status','Invalid phone number',false); return; }
 
-  // Enforce max contacts per list
-  if (authArr.length > MAX_CONTACTS) { showSmallStatus('phones_status','Authorized list limited to ' + MAX_CONTACTS + ' entries', false); return; }
-  if (recArr.length > MAX_CONTACTS) { showSmallStatus('phones_status','Recipients list limited to ' + MAX_CONTACTS + ' entries', false); return; }
+  if (recArr.length > MAX_CONTACTS) { showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; }
 
-  var p1 = new URLSearchParams(); p1.append('contacts', JSON.stringify(authArr));
-  fetch('/api/contacts/authorized', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p1.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Authorized saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
-    .catch(e=>showSmallStatus('phones_status','Save failed',false));
-
-  var p2 = new URLSearchParams(); p2.append('contacts', JSON.stringify(recArr));
-  fetch('/api/contacts/recipients', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p2.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Recipients saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
+  var p = new URLSearchParams(); p.append('contacts', JSON.stringify(recArr));
+  fetch('/api/contacts/recipients', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Contacts saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
     .catch(e=>showSmallStatus('phones_status','Save failed',false));
 }
 
-function renderContactList(containerId, arr, isAuth){
+function renderContactList(containerId, arr){
   var el = document.getElementById(containerId); if(!el) return;
   el.innerHTML = '';
   for (var idx = 0; idx < arr.length && idx < MAX_CONTACTS; idx++) {
@@ -2902,7 +2780,6 @@ function renderContactList(containerId, arr, isAuth){
   }
 }
 
-function addAuthContact(){ var el=document.getElementById('auth_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
 function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
 function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
 
@@ -2960,6 +2837,7 @@ function loadSIMConfig() {
   fetch('/api/sim-config').then(r=>r.json()).then(cfg=>{
     if (cfg.service_provider) document.getElementById('sim_provider').value = cfg.service_provider;
     if (cfg.phone_number) document.getElementById('sim_phone').value = cfg.phone_number;
+    if (cfg.relay_pin) document.getElementById('sim_relay_pin').value = cfg.relay_pin;
   }).catch(e=>console.log('SIM config load failed', e));
 }
 
@@ -2967,10 +2845,12 @@ function loadSIMConfig() {
 function saveSIMConfig(){
   var provider = (document.getElementById('sim_provider')||{}).value || '';
   var phone = (document.getElementById('sim_phone')||{}).value || '';
+  var relayPin = (document.getElementById('sim_relay_pin')||{}).value || '';
 
   var p = new URLSearchParams();
   p.append('service_provider', provider.trim());
   p.append('phone_number', phone.trim());
+  p.append('relay_pin', relayPin.trim());
 
   fetch('/api/sim-config', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('sim_status','SIM configuration saved',true); else showSmallStatus('sim_status',d.error||'Save failed',false); })

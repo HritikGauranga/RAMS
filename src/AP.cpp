@@ -1551,10 +1551,11 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="di-table">
-                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1568,10 +1569,11 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="ai-table">
-                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1585,10 +1587,11 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">State</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="relay-table">
-                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -2173,6 +2176,13 @@ function formatUptime(ms){
   return (days > 0 ? days + 'd ' : '') + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
 }
 
+function configBadge(enabled){
+  var style = enabled
+    ? 'background:#d4edda;color:#155724'
+    : 'background:#e5e7eb;color:#374151';
+  return '<span style="' + style + ';padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">' + (enabled ? 'Enabled' : 'Disabled') + '</span>';
+}
+
 function loadDashboard(){
   fetch('/api/dashboard').then(r=>{
     if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
@@ -2202,19 +2212,19 @@ function loadDashboard(){
         io.digital_inputs.forEach((di, idx) => {
           var status = di.value === 0 ? 'Normal' : 'Alarm';
           var badge = di.value === 0 ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + di.value + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
+          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + di.value + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
         });
       }
-      document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
       
       // Analog Inputs
       var aiHtml = '';
       if(io.analog_inputs && io.analog_inputs.length > 0) {
         io.analog_inputs.forEach((ai, idx) => {
-          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + ai.value.toFixed(2) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td></tr>';
+          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + ai.value.toFixed(2) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
         });
       }
-      document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
       
       // Relay Outputs
       var relayHtml = '';
@@ -2222,10 +2232,10 @@ function loadDashboard(){
         io.relay_outputs.forEach((relay, idx) => {
           var state = relay.state ? 'ON' : 'OFF';
           var badge = relay.state ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Enabled' : 'Disabled') + '</td></tr>';
+          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Ready' : 'Inactive') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
         });
       }
-      document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
+      document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
     }).catch(e=>console.log('IO status load failed', e));
     
     // Clear network loading placeholder

@@ -740,6 +740,7 @@ static void setupWebServerRoutes() {
     body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
     body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
     body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\",";
+    body += "\"uptime_ms\":" + String(millis()) + ",";
     body += "\"signal_strength\":\"" + strength + "\",";
     body += "\"rssi\":" + String((int)rssi) + ",";
     body += "\"sim_info\":\"" + simDisplay + "\"";
@@ -1469,7 +1470,9 @@ static const char *htmlPage() {
   .nav li.active{background:#e8f6ff;color:var(--primary);font-weight:600}
   .content{flex:1;padding:20px}
   .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-  .actions{display:flex;gap:8px}
+  .actions{display:flex;gap:8px;align-items:center}
+  .uptime{padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #dfe6ee;color:#334155;font-size:13px;font-weight:700;white-space:nowrap}
+  .uptime span{color:var(--muted);font-weight:600;margin-right:4px}
   .btn{padding:8px 14px;border-radius:8px;border:0;cursor:pointer;font-weight:700}
   .btn.primary{background:var(--primary);color:#fff}
   .btn.ghost{background:transparent;color:var(--primary);border:1px solid rgba(21,101,192,0.08)}
@@ -1516,6 +1519,7 @@ static const char *htmlPage() {
           <div class="subtitle" id="topbar_subtitle">Current Configuration Status</div>
         </div>
         <div class="actions">
+          <div class="uptime"><span>UP</span><strong id="uptime_counter">--:--:--</strong></div>
           <button class="btn danger" onclick="location.href='/logout'">Logout</button>
         </div>
       </div>
@@ -2159,11 +2163,22 @@ document.getElementById('nav').addEventListener('click', function(e){
 
 function setStat(id, value){ var el=document.getElementById(id); if(el) el.textContent = value; }
 
+function formatUptime(ms){
+  var total = Math.floor((Number(ms) || 0) / 1000);
+  var days = Math.floor(total / 86400);
+  var hours = Math.floor((total % 86400) / 3600);
+  var mins = Math.floor((total % 3600) / 60);
+  var secs = total % 60;
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  return (days > 0 ? days + 'd ' : '') + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
+}
+
 function loadDashboard(){
   fetch('/api/dashboard').then(r=>{
     if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
     return r.json();
   }).then(d=>{
+    setStat('uptime_counter', formatUptime(d.uptime_ms));
     setStat('s_serial', d.serial_number || 'Not Set');
     setStat('s_apip', d.ap_ip || '-');
     setStat('s_ethip', d.eth_ip || '-');

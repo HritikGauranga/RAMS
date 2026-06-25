@@ -243,8 +243,24 @@ static void processRelayCommand(const String &sender, const String &body) {
   }
 }
 
+static String getQuotedField(const String &line, uint8_t fieldIndex) {
+  int searchFrom = 0;
+  for (uint8_t i = 0; i <= fieldIndex; ++i) {
+    int q1 = line.indexOf('"', searchFrom);
+    if (q1 < 0) return "";
+    int q2 = line.indexOf('"', q1 + 1);
+    if (q2 < 0) return "";
+    if (i == fieldIndex) return line.substring(q1 + 1, q2);
+    searchFrom = q2 + 1;
+  }
+  return "";
+}
+
 static void checkAndProcessSMS() {
   if (!modemReady) return;
+
+  String modeResp = sendAT("AT+CMGF=1", 2000);
+  if (modeResp.indexOf("OK") == -1) return;
 
   String resp = sendAT("AT+CMGL=\"ALL\"", 5000);
   if (resp.indexOf("+CMGL:") < 0) return;
@@ -271,9 +287,7 @@ static void checkAndProcessSMS() {
       int idxStart = line.indexOf(' ');
       int idxEnd = line.indexOf(',', idxStart);
       currentIndex = line.substring(idxStart + 1, idxEnd).toInt();
-      int q1 = line.indexOf('"', idxEnd);
-      int q2 = line.indexOf('"', q1 + 1);
-      sender = (q1 >= 0 && q2 >= 0) ? line.substring(q1 + 1, q2) : "";
+      sender = getQuotedField(line, 1);
       body = "";
     } else if (currentIndex >= 0 && line.length() > 0 && line != "OK" && !line.startsWith("+CMGL")) {
       body += line + "\n";
@@ -449,6 +463,7 @@ static void initModem() {
   }
 
   sendAT("AT+CMEE=2", 2000);
+  sendAT("AT+CMGF=1", 2000);
   sendAT("AT+CNMI=2,1,0,0,0", 2000);
   sendAT("AT+CMGD=1,4", 2000);
   bool simOk     = modemSimReady();

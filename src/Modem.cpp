@@ -1,6 +1,7 @@
 #include "Modem.h"
 #include "Shared.h"
 #include <HardwareSerial.h>
+#include <LittleFS.h>
 
 HardwareSerial SerialAT(1);
 static bool modemReady = false;
@@ -49,6 +50,8 @@ static void setModemReady(bool ready) {
   modemReady = ready;
   setModemInitStatusLED(ready);
 }
+
+static bool sendSMS(const String &number, const String &message);
 
 // Normalize to a modem-safe destination:
 // - keeps a single leading '+' (E.164)
@@ -137,6 +140,135 @@ static void checkPulses() {
   }
 }
 
+static bool isAuthorizedSender(const String &sender) {
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return false;
+  for (size_t i = 0; i < rec.count; ++i) {
+    if (!rec.items[i].enabled) continue;
+    String num = String(rec.items[i].number);
+    if (sender == num || sender == "+" + num) {
+      return true;
+    }
+    if (num.startsWith("+")) num = num.substring(1);
+    if (sender == num || sender == "+" + num) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static String readTextFileValue(const char *path, const String &fallback) {
+  String value = fallback;
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return value;
+  if (LittleFS.exists(path)) {
+    File f = LittleFS.open(path, "r");
+    if (f) {
+      value = f.readString();
+      f.close();
+    }
+  }
+  Shared_unlockFileSystem();
+  value.trim();
+  return value.length() > 0 ? value : fallback;
+}
+
+static String readSystemConfigValue(const String &key, const String &fallback) {
+  String value = fallback;
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return value;
+  if (LittleFS.exists("/system_config.json")) {
+    File f = LittleFS.open("/system_config.json", "r");
+    if (f) {
+      String json = f.readString();
+      f.close();
+      String pattern = "\"" + key + "\"";
+      int keyPos = json.indexOf(pattern);
+      if (keyPos >= 0) {
+        int colonPos = json.indexOf(':', keyPos + pattern.length());
+        if (colonPos >= 0) {
+          int q1 = json.indexOf('"', colonPos + 1);
+          int q2 = json.indexOf('"', q1 + 1);
+          if (q1 >= 0 && q2 > q1) value = json.substring(q1 + 1, q2);
+        }
+      }
+    }
+  }
+  Shared_unlockFileSystem();
+  value.trim();
+  return value.length() > 0 ? value : fallback;
+}
+
+static String formatUptime(unsigned long ms) {
+  unsigned long seconds = ms / 1000;
+  unsigned long days = seconds / 86400;
+  unsigned long hours = (seconds % 86400) / 3600;
+  unsigned long mins = (seconds % 3600) / 60;
+  String out = "";
+  if (days > 0) {
+    out += String(days) + (days == 1 ? " day" : " days");
+  }
+  if (hours > 0) {
+    if (out.length() > 0) out += " ";
+    out += String(hours) + (hours == 1 ? " hr" : " hrs");
+  }
+  if (mins > 0 || out.length() == 0) {
+    if (out.length() > 0) out += " ";
+    out += String(mins) + (mins == 1 ? " min" : " mins");
+  }
+  return out.length() > 0 ? out : "0 mins";
+}
+
+static String mapSignalStrength(int8_t rssi) {
+  if (rssi == -2) return "SIM Not Inserted";
+  if (rssi < 0) return "Unknown";
+  if (rssi >= 25) return "Excellent";
+  if (rssi >= 20) return "Very Good";
+  if (rssi >= 15) return "Good";
+  if (rssi >= 10) return "Fair";
+  if (rssi >= 5) return "Weak";
+  return "Very Weak";
+}
+
+static String buildSystemStatusSMS() {
+  String siteName = readSystemConfigValue("site_name", "Not Set");
+  String siteAddress = readSystemConfigValue("site_address", "");
+  String location = siteAddress.length() > 0 ? siteAddress : siteName;
+  if (location.length() == 0) location = "Not Set";
+
+  String serial = readTextFileValue("/serialnumber.txt", "Not Set");
+  if (serial.length() == 0) serial = "Not Set";
+
+  SystemSnapshot snapshot = Shared_getSnapshot();
+  size_t activeAlarmCount = 0;
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+    if (snapshot.digitalInputs[i] != 0) ++activeAlarmCount;
+  }
+
+  int8_t rssi = Modem_getSignalStrength();
+  String signal = mapSignalStrength(rssi);
+  String relayState = "R1=" + String(snapshot.relayState[0] ? "ON" : "OFF") + ", R2=" + String(snapshot.relayState[1] ? "ON" : "OFF");
+
+  String msg = "Location: " + location + "\n";
+  msg += "Site Name: " + siteName + "\n";
+  msg += "Serial No.: " + serial + "\n";
+  msg += "Uptime: " + formatUptime(millis()) + "\n";
+  msg += "Active Alarms: " + String((unsigned)activeAlarmCount) + "\n";
+  msg += "Signal Strength: " + signal + "\n";
+  msg += "Relays: " + relayState;
+  return msg;
+}
+
+static void processStatusRequest(const String &sender) {
+  if (!isAuthorizedSender(sender)) {
+    Serial.println("[SMS] Unauthorized sender for status request: " + sender);
+    return;
+  }
+
+  String msg = buildSystemStatusSMS();
+  if (!sendSMS(sender, msg)) {
+    Serial.println("[SMS] Failed to send status SMS to " + sender);
+  }
+}
+
 static void processRelayCommand(const String &sender, const String &body) {
   String content = body;
   int firstPercent = content.indexOf('%');
@@ -162,23 +294,7 @@ static void processRelayCommand(const String &sender, const String &body) {
   String onTimeStr = content.substring(c3 + 1);
   pin.trim(); relayName.trim(); state.trim(); onTimeStr.trim();
 
-  ContactList rec = {};
-  if (!Shared_getRecipientContacts(rec)) return;
-  bool authorized = false;
-  for (size_t i = 0; i < rec.count; ++i) {
-    if (!rec.items[i].enabled) continue;
-    String num = String(rec.items[i].number);
-    if (sender == num || sender == "+" + num) {
-      authorized = true;
-      break;
-    }
-    if (num.startsWith("+")) num = num.substring(1);
-    if (sender == num || sender == "+" + num) {
-      authorized = true;
-      break;
-    }
-  }
-  if (!authorized) {
+  if (!isAuthorizedSender(sender)) {
     Serial.println("[SMS] Unauthorized sender for relay: " + sender);
     return;
   }
@@ -278,9 +394,15 @@ static void checkAndProcessSMS() {
 
     if (line.startsWith("+CMGL:")) {
       if (currentIndex >= 0) {
-        int cmdIdx = body.indexOf("Set Relay%");
-        if (cmdIdx >= 0) {
-          processRelayCommand(sender, body.substring(cmdIdx));
+        String upperBody = body;
+        upperBody.toUpperCase();
+        if (upperBody.indexOf("GET STATUS") >= 0) {
+          processStatusRequest(sender);
+        } else {
+          int cmdIdx = body.indexOf("Set Relay%");
+          if (cmdIdx >= 0) {
+            processRelayCommand(sender, body.substring(cmdIdx));
+          }
         }
         sendAT("AT+CMGD=" + String(currentIndex), 2000);
       }
@@ -296,9 +418,15 @@ static void checkAndProcessSMS() {
   }
 
   if (currentIndex >= 0) {
-    int cmdIdx = body.indexOf("Set Relay%");
-    if (cmdIdx >= 0) {
-      processRelayCommand(sender, body.substring(cmdIdx));
+    String upperBody = body;
+    upperBody.toUpperCase();
+    if (upperBody.indexOf("GET STATUS") >= 0) {
+      processStatusRequest(sender);
+    } else {
+      int cmdIdx = body.indexOf("Set Relay%");
+      if (cmdIdx >= 0) {
+        processRelayCommand(sender, body.substring(cmdIdx));
+      }
     }
     sendAT("AT+CMGD=" + String(currentIndex), 2000);
   }

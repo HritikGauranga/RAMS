@@ -748,7 +748,7 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", body);
   });
 
-  // System Config endpoints: store site details and timezone in LittleFS
+  // System Config endpoints: store site details in LittleFS
   server->on("/api/system-config", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
@@ -769,7 +769,7 @@ static void setupWebServerRoutes() {
     }
     Shared_unlockFileSystem();
     if (body.length() == 0) {
-      body = "{\"site_name\":\"\",\"site_address\":\"\",\"timezone\":\"UTC0\"}";
+      body = "{\"site_name\":\"\",\"site_address\":\"\"}";
     }
     request->send(200, "application/json", body);
   });
@@ -781,10 +781,9 @@ static void setupWebServerRoutes() {
     }
     String site = request->hasParam("site_name", true) ? request->getParam("site_name", true)->value() : "";
     String addr = request->hasParam("site_address", true) ? request->getParam("site_address", true)->value() : "";
-    String tz = request->hasParam("timezone", true) ? request->getParam("timezone", true)->value() : "";
-    site.trim(); addr.trim(); tz.trim();
+    site.trim(); addr.trim();
 
-    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\",\"timezone\":\"" + escapeJson(tz) + "\"}";
+    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\"}";
 
     if (!Shared_lockFileSystem(pdMS_TO_TICKS(2000))) {
       request->send(500, "application/json", "{\"error\":\"FS busy\"}");
@@ -2147,6 +2146,11 @@ function switchToTab(tabName) {
   document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
   var el = document.getElementById(tabName); if(el) el.style.display='block';
   localStorage.setItem('selectedTab', tabName);
+  if (window.history && window.history.replaceState) {
+    var url = new URL(window.location.href);
+    url.hash = 'tab=' + tabName;
+    window.history.replaceState(null, '', url.toString());
+  }
   var labels = tabLabels[tabName] || { title: tabName, subtitle: '' };
   document.getElementById('topbar_title').textContent = labels.title;
   document.getElementById('topbar_subtitle').textContent = labels.subtitle;
@@ -2689,14 +2693,6 @@ function loadSystemConfig(){
   }).then(cfg=>{
     var sn = document.getElementById('site_name'); if (sn) sn.value = cfg.site_name || '';
     var sa = document.getElementById('site_address'); if (sa) sa.value = cfg.site_address || '';
-    var tz = cfg.timezone || 'UTC0';
-    var tzSel = document.getElementById('timezone');
-    if (tzSel) {
-      var found = false;
-      for (var i=0;i<tzSel.options.length;i++) { if (tzSel.options[i].value === tz) { tzSel.selectedIndex = i; found = true; break; } }
-      if (!found) { var o = document.createElement('option'); o.value = tz; o.text = tz; tzSel.add(o); tzSel.value = tz; }
-    }
-    
   }).catch(e=>{ if (e !== 'auth') console.log('load sysconfig failed', e); });
 }
 
@@ -2704,7 +2700,6 @@ function saveSystemConfig(){
   var p = new URLSearchParams();
   p.append('site_name', document.getElementById('site_name').value.trim());
   p.append('site_address', document.getElementById('site_address').value.trim());
-  p.append('timezone', document.getElementById('timezone').value);
   fetch('/api/system-config', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(d=>{ if (d.success) showStatus('Saved', true); else showStatus(d.error||'Save failed', false); })
     .catch(e=>showStatus('Save failed: '+e.message, false));
@@ -2713,25 +2708,20 @@ function saveSystemConfig(){
 loadDashboard();
 setInterval(loadDashboard, 5000);
 loadRecipients();
+loadPhones();
 
-// Tab restoration logic:
-// - First page load (fresh login): Start at Dashboard
-// - Page refresh while on another tab: Stay on that tab
-var isFirstPageLoad = !sessionStorage.getItem('pageLoaded');
-sessionStorage.setItem('pageLoaded', 'true');
-
-if (isFirstPageLoad) {x
-  // Fresh login - always start at Dashboard
-  switchToTab('dashboard');
+// Restore the last active tab after reloads.
+var initialTab = 'dashboard';
+var hashTab = window.location.hash.replace(/^#/, '').replace(/^tab=/, '');
+if (hashTab && document.getElementById(hashTab)) {
+  initialTab = hashTab;
 } else {
-  // Page refresh - restore previous tab
   var savedTab = localStorage.getItem('selectedTab') || 'dashboard';
   if (document.getElementById(savedTab)) {
-    switchToTab(savedTab);
-  } else {
-    switchToTab('dashboard');
+    initialTab = savedTab;
   }
 }
+switchToTab(initialTab);
 </script>
 <script>
 function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }
@@ -2760,7 +2750,7 @@ function saveContacts(){
 
   var p = new URLSearchParams(); p.append('contacts', JSON.stringify(recArr));
   fetch('/api/contacts/recipients', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('phones_status','Contacts saved',true); else showSmallStatus('phones_status',d.error||'Save failed',false); })
+    .then(r=>r.json()).then(d=>{ if(d.success) { showSmallStatus('phones_status','Contacts saved',true); loadPhones(); } else showSmallStatus('phones_status',d.error||'Save failed',false); })
     .catch(e=>showSmallStatus('phones_status','Save failed',false));
 }
 

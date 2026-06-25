@@ -41,6 +41,29 @@ static constexpr uint16_t IO_CONFIG_VERSION = 2;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 
+static bool writeLegacyPhonesFile(const ContactList &list) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  if (list.count == 0) {
+    LittleFS.remove("/phones.conf");
+    Shared_unlockFileSystem();
+    return true;
+  }
+
+  File out = LittleFS.open("/phones.conf", "w");
+  if (!out) {
+    Shared_unlockFileSystem();
+    return false;
+  }
+  for (size_t i = 0; i < list.count; ++i) {
+    if (list.items[i].number[0] != '\0') {
+      out.println(String(list.items[i].number));
+    }
+  }
+  out.close();
+  Shared_unlockFileSystem();
+  return true;
+}
+
 static GatewaySettings gatewaySettings = {
   true,            // useDhcp
   {192,168,8,200}, // staticIp
@@ -225,8 +248,88 @@ void Shared_init() {
 
   // Load persisted phone list / contacts if present. Prefer JSON contacts file.
   if (Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
-    // Migration: if old /phones.conf exists, load into recipients list
-    if (LittleFS.exists("/phones.conf")) {
+    bool loadedFromJson = false;
+    if (LittleFS.exists("/contacts.json")) {
+      File f = LittleFS.open("/contacts.json", "r");
+      if (f) {
+        String json = f.readString();
+        f.close();
+        auto extractArray = [&](const String &root, const String &name) {
+          ContactList list = {0};
+          int idx = root.indexOf('"' + name + '"');
+          if (idx < 0) return list;
+          int a = root.indexOf('[', idx);
+          if (a < 0) return list;
+          int b = root.indexOf(']', a);
+          if (b < 0) return list;
+          String arr = root.substring(a + 1, b);
+          int pos = 0;
+          while (pos < arr.length() && list.count < MAX_PHONE_PER_LIST) {
+            int objStart = arr.indexOf('{', pos);
+            if (objStart < 0) break;
+            int objEnd = arr.indexOf('}', objStart);
+            if (objEnd < 0) break;
+            String obj = arr.substring(objStart + 1, objEnd);
+            Contact c = {};
+            int enIdx = obj.indexOf("\"enabled\"");
+            if (enIdx >= 0) {
+              int colon = obj.indexOf(':', enIdx);
+              if (colon >= 0) {
+                String val = trimCopy(obj.substring(colon + 1));
+                if (val.startsWith("true")) c.enabled = true;
+                else c.enabled = false;
+              }
+            }
+            int nameIdx = obj.indexOf("\"name\"");
+            if (nameIdx >= 0) {
+              int colon = obj.indexOf(':', nameIdx);
+              if (colon >= 0) {
+                int q1 = obj.indexOf('"', colon + 1);
+                int q2 = obj.indexOf('"', q1 + 1);
+                if (q1 >= 0 && q2 >= 0) {
+                  String n = obj.substring(q1 + 1, q2);
+                  n.trim();
+                  n.toCharArray(c.name, sizeof(c.name));
+                }
+              }
+            }
+            int numIdx = obj.indexOf("\"number\"");
+            bool hasValidNumber = false;
+            if (numIdx >= 0) {
+              int colon = obj.indexOf(':', numIdx);
+              if (colon >= 0) {
+                int q1 = obj.indexOf('"', colon + 1);
+                int q2 = obj.indexOf('"', q1 + 1);
+                if (q1 >= 0 && q2 >= 0) {
+                  String n = obj.substring(q1 + 1, q2);
+                  n.trim();
+                  if (isValidPhoneFormat(n)) {
+                    n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+                    hasValidNumber = true;
+                  }
+                }
+              }
+            }
+            if (hasValidNumber) {
+              list.items[list.count++] = c;
+            }
+            pos = objEnd + 1;
+          }
+          return list;
+        };
+
+        ContactList recs = extractArray(json, String("recipients"));
+        if (recs.count > 0) {
+          if (Shared_lockState(pdMS_TO_TICKS(100))) {
+            recipientContacts = recs;
+            Shared_unlockState();
+          }
+          loadedFromJson = true;
+        }
+      }
+    }
+
+    if (!loadedFromJson && LittleFS.exists("/phones.conf")) {
       File f = LittleFS.open("/phones.conf", "r");
       if (f) {
         ContactList rec = {0};
@@ -237,94 +340,16 @@ void Shared_init() {
           Contact c = {};
           c.enabled = true;
           line.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-          // leave name empty
           rec.items[rec.count] = c;
           ++rec.count;
         }
         f.close();
-        if (Shared_lockState(pdMS_TO_TICKS(100))) {
+        if (rec.count > 0 && Shared_lockState(pdMS_TO_TICKS(100))) {
           recipientContacts = rec;
           Shared_unlockState();
         }
       }
     }
-        // Load new contacts.json (recipients only)
-        if (LittleFS.exists("/contacts.json")) {
-          File f = LittleFS.open("/contacts.json", "r");
-          if (f) {
-            String json = f.readString();
-            f.close();
-            auto extractArray = [&](const String &root, const String &name) {
-              ContactList list = {0};
-              int idx = root.indexOf('"' + name + '"');
-              if (idx < 0) return list;
-              int a = root.indexOf('[', idx);
-              if (a < 0) return list;
-              int b = root.indexOf(']', a);
-              if (b < 0) return list;
-              String arr = root.substring(a + 1, b);
-              int pos = 0;
-              while (pos < arr.length() && list.count < MAX_PHONE_PER_LIST) {
-                int objStart = arr.indexOf('{', pos);
-                if (objStart < 0) break;
-                int objEnd = arr.indexOf('}', objStart);
-                if (objEnd < 0) break;
-                String obj = arr.substring(objStart + 1, objEnd);
-                Contact c = {};
-                int enIdx = obj.indexOf("\"enabled\"");
-                if (enIdx >= 0) {
-                  int colon = obj.indexOf(':', enIdx);
-                  if (colon >= 0) {
-                    String val = trimCopy(obj.substring(colon + 1));
-                    if (val.startsWith("true")) c.enabled = true;
-                    else c.enabled = false;
-                  }
-                }
-                int nameIdx = obj.indexOf("\"name\"");
-                if (nameIdx >= 0) {
-                  int colon = obj.indexOf(':', nameIdx);
-                  if (colon >= 0) {
-                    int q1 = obj.indexOf('"', colon + 1);
-                    int q2 = obj.indexOf('"', q1 + 1);
-                    if (q1 >= 0 && q2 >= 0) {
-                      String n = obj.substring(q1 + 1, q2);
-                      n.trim();
-                      n.toCharArray(c.name, sizeof(c.name));
-                    }
-                  }
-                }
-                int numIdx = obj.indexOf("\"number\"");
-                bool hasValidNumber = false;
-                if (numIdx >= 0) {
-                  int colon = obj.indexOf(':', numIdx);
-                  if (colon >= 0) {
-                    int q1 = obj.indexOf('"', colon + 1);
-                    int q2 = obj.indexOf('"', q1 + 1);
-                    if (q1 >= 0 && q2 >= 0) {
-                      String n = obj.substring(q1 + 1, q2);
-                      n.trim();
-                      if (isValidPhoneFormat(n)) {
-                        n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-                        hasValidNumber = true;
-                      }
-                    }
-                  }
-                }
-                if (hasValidNumber) {
-                  list.items[list.count++] = c;
-                }
-                pos = objEnd + 1;
-              }
-              return list;
-            };
-
-            ContactList recs = extractArray(json, String("recipients"));
-            if (Shared_lockState(pdMS_TO_TICKS(100))) {
-              if (recs.count > 0) recipientContacts = recs;
-              Shared_unlockState();
-            }
-          }
-        }
 
     Shared_unlockFileSystem();
   }
@@ -609,6 +634,7 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   }
   out.print("]}");
   out.close();
+  writeLegacyPhonesFile(filtered);
   Shared_unlockFileSystem();
 
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;

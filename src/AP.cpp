@@ -174,7 +174,7 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
 </head>
 <body>
   <form class="panel" method="POST" action="/login" autocomplete="off">
-    <h1>MB Map Config Login</h1>
+    <h1>RAMS Config Login</h1>
     __ERROR_BLOCK__
     <label for="user">ID</label>
     <input id="user" name="user" type="text" value="__PREFILLED_USER__" readonly required>
@@ -622,7 +622,7 @@ static void setupWebServerRoutes() {
     if (user == expectedUser && pass == expectedPass) {
       gAuthSessionToken = makeSessionToken();
       AsyncWebServerResponse *res = request->beginResponse(302);
-      res->addHeader("Location", "/");
+      res->addHeader("Location", "/?tab=dashboard");
       res->addHeader("Set-Cookie",
                      String(AUTH_COOKIE_NAME) + "=" + gAuthSessionToken +
                      "; Path=/; Max-Age=86400; HttpOnly; SameSite=Strict");
@@ -1518,7 +1518,7 @@ static const char *htmlPage() {
           <div class="subtitle" id="topbar_subtitle">Current Configuration Status</div>
         </div>
         <div class="actions">
-          <div class="uptime"><span>UP</span><strong id="uptime_counter">--:--:--</strong></div>
+          <div class="uptime"><span>UP Time</span><strong id="uptime_counter">--:--:--</strong></div>
           <button class="btn danger" onclick="location.href='/logout'">Logout</button>
         </div>
       </div>
@@ -2145,7 +2145,7 @@ function switchToTab(tabName) {
   li.classList.add('active');
   document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
   var el = document.getElementById(tabName); if(el) el.style.display='block';
-  localStorage.setItem('selectedTab', tabName);
+  setStoredTab(tabName);
   if (window.history && window.history.replaceState) {
     var url = new URL(window.location.href);
     url.hash = 'tab=' + tabName;
@@ -2158,8 +2158,43 @@ function switchToTab(tabName) {
   if (tabName === 'analog') loadAIConfig();
   if (tabName === 'relays') loadDOConfig();
   if (tabName === 'sysconfig') loadSystemConfig();
-  if (tabName === 'phones') loadPhones();
+  if (tabName === 'phones' && typeof loadPhones === 'function') loadPhones();
   if (tabName === 'network') { loadNetworkCfg(); loadSIMConfig(); }
+}
+
+function getStoredTab() {
+  try {
+    return localStorage.getItem('selectedTab') || '';
+  } catch(e) {
+    return '';
+  }
+}
+
+function setStoredTab(tabName) {
+  try {
+    localStorage.setItem('selectedTab', tabName);
+  } catch(e) {}
+}
+
+function getInitialTab() {
+  var tab = 'dashboard';
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var queryTab = params.get('tab') || '';
+    var hashTab = window.location.hash.replace(/^#/, '').replace(/^tab=/, '');
+    var savedTab = getStoredTab();
+    [queryTab, hashTab, savedTab].some(function(candidate) {
+      if (candidate && document.getElementById(candidate)) {
+        tab = candidate;
+        return true;
+      }
+      return false;
+    });
+  } catch(e) {
+    var saved = getStoredTab();
+    if (saved && document.getElementById(saved)) tab = saved;
+  }
+  return tab;
 }
 
 document.getElementById('nav').addEventListener('click', function(e){
@@ -2371,7 +2406,10 @@ function encodeBitmask(selectedIndices) {
 
 // Load recipients and populate all three dropdowns
 function loadRecipients(){
-  fetch('/api/contacts/recipients').then(r=>r.json()).then(d=>{
+  return fetch('/api/contacts/recipients').then(r=>{
+    if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(d=>{
     if (d.recipients && Array.isArray(d.recipients)) {
       event_recipients = d.recipients;
       var di_sel = document.getElementById('di_recipients_select');
@@ -2405,8 +2443,24 @@ function loadRecipients(){
           });
         }
       });
+      refreshRecipientSelections();
     }
-  }).catch(e=>console.log('recipients load failed', e));
+  }).catch(e=>{ if(e !== 'auth') console.log('recipients load failed', e); });
+}
+
+function refreshRecipientSelections(){
+  if (di_configs && di_configs.length > 0 && typeof switchDI === 'function') {
+    var diIndex = parseInt(window.current_di_index || (document.getElementById('di_selector') || {}).value || 0);
+    if (diIndex >= 0 && diIndex < di_configs.length) switchDI(diIndex);
+  }
+  if (ai_configs && ai_configs.length > 0 && typeof switchAI === 'function') {
+    var aiIndex = parseInt(window.current_ai_index || (document.getElementById('ai_selector') || {}).value || 0);
+    if (aiIndex >= 0 && aiIndex < ai_configs.length) switchAI(aiIndex);
+  }
+  if (do_configs && do_configs.length > 0 && typeof switchDO === 'function') {
+    var doIndex = parseInt(window.current_do_index || (document.getElementById('do_selector') || {}).value || 0);
+    if (doIndex >= 0 && doIndex < do_configs.length) switchDO(doIndex);
+  }
 }
 
 function getAIUnitOptions(){
@@ -2705,23 +2759,12 @@ function saveSystemConfig(){
     .catch(e=>showStatus('Save failed: '+e.message, false));
 }
 
+// Restore the last active tab after reloads.
+switchToTab(getInitialTab());
+
 loadDashboard();
 setInterval(loadDashboard, 5000);
 loadRecipients();
-loadPhones();
-
-// Restore the last active tab after reloads.
-var initialTab = 'dashboard';
-var hashTab = window.location.hash.replace(/^#/, '').replace(/^tab=/, '');
-if (hashTab && document.getElementById(hashTab)) {
-  initialTab = hashTab;
-} else {
-  var savedTab = localStorage.getItem('selectedTab') || 'dashboard';
-  if (document.getElementById(savedTab)) {
-    initialTab = savedTab;
-  }
-}
-switchToTab(initialTab);
 </script>
 <script>
 function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }
@@ -2750,7 +2793,7 @@ function saveContacts(){
 
   var p = new URLSearchParams(); p.append('contacts', JSON.stringify(recArr));
   fetch('/api/contacts/recipients', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) { showSmallStatus('phones_status','Contacts saved',true); loadPhones(); } else showSmallStatus('phones_status',d.error||'Save failed',false); })
+    .then(r=>r.json()).then(d=>{ if(d.success) { showSmallStatus('phones_status','Contacts saved',true); loadPhones(); loadRecipients(); } else showSmallStatus('phones_status',d.error||'Save failed',false); })
     .catch(e=>showSmallStatus('phones_status','Save failed',false));
 }
 
@@ -2773,6 +2816,10 @@ function renderContactList(containerId, arr){
 
 function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
 function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
+
+if (document.getElementById('phones') && document.getElementById('phones').style.display !== 'none') {
+  loadPhones();
+}
 
 function loadNetworkCfg(){
   fetch('/api/gateway-settings').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{

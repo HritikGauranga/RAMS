@@ -52,7 +52,6 @@ void setup() {
   WiFi.mode(WIFI_STA);
   delay(100);
 
-  // RTU (Modbus RTU) removed for RAMS firmware
   TCP_init();
 
   if (!Modem_init()) {

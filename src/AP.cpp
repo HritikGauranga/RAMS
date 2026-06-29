@@ -1542,7 +1542,7 @@ static const char *htmlPage() {
           <h2 style="margin-bottom:15px">Input & Output Status</h2>
           
           <div style="margin-bottom:20px">
-            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Digital Inputs</h3>
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">-Digital Inputs</h3>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
@@ -1560,7 +1560,7 @@ static const char *htmlPage() {
           </div>
 
           <div style="margin-bottom:20px">
-            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Analog Inputs</h3>
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">-Analog Inputs</h3>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
@@ -1578,7 +1578,7 @@ static const char *htmlPage() {
           </div>
 
           <div>
-            <h3 style="font-size:14px;margin-bottom:10px;color:#555">Digital Outputs</h3>
+            <h3 style="font-size:14px;margin-bottom:10px;color:#555">-Digital Outputs</h3>
             <table style="width:100%;border-collapse:collapse;table-layout:fixed">
               <thead style="background:#f9fafb">
                 <tr>
@@ -2148,6 +2148,7 @@ function switchToTab(tabName) {
   setStoredTab(tabName);
   if (window.history && window.history.replaceState) {
     var url = new URL(window.location.href);
+    url.searchParams.delete('tab');
     url.hash = 'tab=' + tabName;
     window.history.replaceState(null, '', url.toString());
   }
@@ -2183,7 +2184,7 @@ function getInitialTab() {
     var queryTab = params.get('tab') || '';
     var hashTab = window.location.hash.replace(/^#/, '').replace(/^tab=/, '');
     var savedTab = getStoredTab();
-    [queryTab, hashTab, savedTab].some(function(candidate) {
+    [hashTab, queryTab, savedTab].some(function(candidate) {
       if (candidate && document.getElementById(candidate)) {
         tab = candidate;
         return true;

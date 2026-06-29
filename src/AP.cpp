@@ -186,7 +186,7 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
     <button type="submit">Login</button>
   </form>
 <script>
-  // Clear session storage on login page load to ensure fresh logins go to Dashboard
+  // Fresh successful login redirects to /?tab=dashboard; refresh tab state is kept in localStorage.
   sessionStorage.clear();
   
   (function() {
@@ -555,12 +555,12 @@ function sanitizeIpInput(el){
   el.value = parts.join('.');
 }
 function loadCfg(){
-  fetch('/api/gateway-settings').then(r=>r.json()).then(c=>{
+  fetch('/api/gateway-settings').then(function(r){ return r.json(); }).then(function(c){
     document.getElementById('useDhcp').checked=!!c.use_dhcp;
     document.getElementById('staticIp').value=c.static_ip||'';
     document.getElementById('subnetMask').value=c.subnet_mask||'';
     document.getElementById('gatewayIp').value=c.gateway_ip||'';
-  }).catch(e=>status('Load failed: '+e.message,false));
+  }).catch(function(e){ status('Load failed: '+e.message,false); });
 }
 function saveCfg(){
   var p=new URLSearchParams();
@@ -569,8 +569,8 @@ function saveCfg(){
   p.append('subnet_mask',document.getElementById('subnetMask').value.trim());
   p.append('gateway_ip',document.getElementById('gatewayIp').value.trim());
   fetch('/api/gateway-settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()})
-    .then(r=>r.json()).then(d=>{ if(d.success) status('Saved. Reboot to apply.',true); else status(d.error||'Save failed',false); })
-    .catch(e=>status('Save failed: '+e.message,false));
+    .then(function(r){ return r.json(); }).then(function(d){ if(d.success) status('Saved. Reboot to apply.',true); else status(d.error||'Save failed',false); })
+    .catch(function(e){ status('Save failed: '+e.message,false); });
 }
 loadCfg();
 </script>
@@ -1506,7 +1506,7 @@ static const char *htmlPage() {
         <li data-tab="analog">AI Config</li>
         <li data-tab="relays">DO Config</li>
         <li data-tab="phones">Contact Config</li>
-        <li data-tab="network">Network Configuration</li>
+        <li data-tab="network">Network Config</li>
         <li data-tab="sysconfig">System Config</li>
         <li data-tab="diag">Diagnostics</li>
       </ul>
@@ -1904,7 +1904,7 @@ static const char *htmlPage() {
       </div>
       <div id="relays" class="tab" style="display:none">
         <div class="panel">
-          <h2>Digital Output Config</h2>
+          <h2>Digital Output Configuration</h2>
           <div id="do_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
@@ -2091,7 +2091,7 @@ static const char *htmlPage() {
       </div>
       <div id="sysconfig" class="tab" style="display:none">
         <div class="panel">
-          <h2>System Config</h2>
+          <h2>System Configuration</h2>
           <div id="sys_status" style="display:none;margin-bottom:12px"></div>
 
           <div class="form-section">
@@ -2133,25 +2133,47 @@ var tabLabels = {
   'analog': { title: 'AI Config'},
   'relays': { title: 'DO Config'},
   'phones': { title: 'Contact Config'},
-  'network': { title: 'Network Configuration'},
+  'network': { title: 'Network Config'},
   'sysconfig': { title: 'System Config'},
   'diag': { title: 'Diagnostics',}
 };
 
+function eachNode(nodes, fn) {
+  for (var i = 0; nodes && i < nodes.length; i++) fn(nodes[i], i);
+}
+
+function findClosestTabItem(el) {
+  while (el && el !== document) {
+    if (el.getAttribute && el.getAttribute('data-tab')) return el;
+    el = el.parentNode;
+  }
+  return null;
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function switchToTab(tabName) {
   var li = document.querySelector('[data-tab="' + tabName + '"]');
   if (!li) return;
-  document.querySelectorAll('.nav li').forEach(function(n){ n.classList.remove('active'); });
+  eachNode(document.querySelectorAll('.nav li'), function(n){ n.classList.remove('active'); });
   li.classList.add('active');
-  document.querySelectorAll('.tab').forEach(function(t){ t.style.display='none'; });
+  eachNode(document.querySelectorAll('.tab'), function(t){ t.style.display='none'; });
   var el = document.getElementById(tabName); if(el) el.style.display='block';
   setStoredTab(tabName);
-  if (window.history && window.history.replaceState) {
-    var url = new URL(window.location.href);
-    url.searchParams.delete('tab');
-    url.hash = 'tab=' + tabName;
-    window.history.replaceState(null, '', url.toString());
-  }
+  try {
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', buildTabUrl(tabName));
+    } else {
+      window.location.hash = 'tab=' + encodeURIComponent(tabName);
+    }
+  } catch(e) {}
   var labels = tabLabels[tabName] || { title: tabName, subtitle: '' };
   document.getElementById('topbar_title').textContent = labels.title;
   document.getElementById('topbar_subtitle').textContent = labels.subtitle;
@@ -2160,7 +2182,7 @@ function switchToTab(tabName) {
   if (tabName === 'relays') loadDOConfig();
   if (tabName === 'sysconfig') loadSystemConfig();
   if (tabName === 'phones' && typeof loadPhones === 'function') loadPhones();
-  if (tabName === 'network') { loadNetworkCfg(); loadSIMConfig(); }
+  if (tabName === 'network' && typeof loadNetworkCfg === 'function') { loadNetworkCfg(); loadSIMConfig(); }
 }
 
 function getStoredTab() {
@@ -2177,12 +2199,44 @@ function setStoredTab(tabName) {
   } catch(e) {}
 }
 
+function getQueryValue(name) {
+  var query = window.location.search || '';
+  if (query.charAt(0) === '?') query = query.substring(1);
+  if (!query) return '';
+  var parts = query.split('&');
+  for (var i = 0; i < parts.length; i++) {
+    var pair = parts[i].split('=');
+    if (decodeURIComponent(pair[0] || '') === name) {
+      return decodeURIComponent((pair[1] || '').replace(/\+/g, ' '));
+    }
+  }
+  return '';
+}
+
+function removeQueryValue(search, name) {
+  if (!search) return '';
+  if (search.charAt(0) === '?') search = search.substring(1);
+  if (!search) return '';
+  var kept = [];
+  var parts = search.split('&');
+  for (var i = 0; i < parts.length; i++) {
+    var pair = parts[i].split('=');
+    if (decodeURIComponent(pair[0] || '') !== name) kept.push(parts[i]);
+  }
+  return kept.length ? '?' + kept.join('&') : '';
+}
+
+function buildTabUrl(tabName) {
+  var path = window.location.pathname || '/';
+  var search = removeQueryValue(window.location.search || '', 'tab');
+  return path + search + '#tab=' + encodeURIComponent(tabName);
+}
+
 function getInitialTab() {
   var tab = 'dashboard';
   try {
-    var params = new URLSearchParams(window.location.search);
-    var queryTab = params.get('tab') || '';
-    var hashTab = window.location.hash.replace(/^#/, '').replace(/^tab=/, '');
+    var queryTab = getQueryValue('tab');
+    var hashTab = decodeURIComponent(window.location.hash.replace(/^#/, '').replace(/^tab=/, ''));
     var savedTab = getStoredTab();
     [hashTab, queryTab, savedTab].some(function(candidate) {
       if (candidate && document.getElementById(candidate)) {
@@ -2199,7 +2253,7 @@ function getInitialTab() {
 }
 
 document.getElementById('nav').addEventListener('click', function(e){
-  var li = e.target.closest('li'); if(!li) return;
+  var li = findClosestTabItem(e.target); if(!li) return;
   var tab = li.getAttribute('data-tab');
   switchToTab(tab);
 });
@@ -2249,10 +2303,10 @@ function loadDashboard(){
       // Digital Inputs
       var diHtml = '';
       if(io.digital_inputs && io.digital_inputs.length > 0) {
-        io.digital_inputs.forEach((di, idx) => {
+        io.digital_inputs.forEach(function(di, idx) {
           var status = di.value === 0 ? 'Normal' : 'Alarm';
           var badge = di.value === 0 ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + di.value + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
+          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.value) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
         });
       }
       document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
@@ -2260,8 +2314,9 @@ function loadDashboard(){
       // Analog Inputs
       var aiHtml = '';
       if(io.analog_inputs && io.analog_inputs.length > 0) {
-        io.analog_inputs.forEach((ai, idx) => {
-          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + ai.value.toFixed(2) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
+        io.analog_inputs.forEach(function(ai, idx) {
+          var aiValue = Number(ai.value);
+          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
         });
       }
       document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
@@ -2269,10 +2324,10 @@ function loadDashboard(){
       // Relay Outputs
       var relayHtml = '';
       if(io.relay_outputs && io.relay_outputs.length > 0) {
-        io.relay_outputs.forEach((relay, idx) => {
+        io.relay_outputs.forEach(function(relay, idx) {
           var state = relay.state ? 'ON' : 'OFF';
           var badge = relay.state ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Ready' : 'Inactive') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
+          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Ready' : 'Inactive') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
         });
       }
       document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
@@ -2294,7 +2349,8 @@ function loadDIConfig(){
     document.getElementById('di_loading').style.display = 'none';
     document.getElementById('di_form_container').style.display = 'block';
     var savedDIIndex = localStorage.getItem('selectedDIIndex') || '0';
-    var selectedIndex = parseInt(savedDIIndex);
+    var selectedIndex = parseInt(savedDIIndex, 10);
+    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= configs.length) selectedIndex = 0;
     document.getElementById('di_selector').value = selectedIndex;
     switchDI(selectedIndex);
   }).catch(e=>{ if(e !== 'auth') console.log('di config load failed', e); });
@@ -2302,7 +2358,10 @@ function loadDIConfig(){
 
 function switchDI(index){
   if(!di_configs || di_configs.length === 0) return;
+  index = parseInt(index, 10);
+  if (isNaN(index) || index < 0 || index >= di_configs.length) index = 0;
   var cfg = di_configs[index];
+  if (!cfg) return;
   document.getElementById('di_enabled').checked = cfg.enabled;
   document.getElementById('di_name').value = cfg.name || '';
   document.getElementById('di_type').value = cfg.normally_closed ? '1' : '0';
@@ -2318,11 +2377,10 @@ function switchDI(index){
   if (di_sel) {
   var selectedIndices =
   decodeBitmask(cfg.selected_contacts || 0);
-  di_sel.querySelectorAll('.recipient-checkbox')
-    .forEach(function(cb) {
+  eachNode(di_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
       cb.checked =
         selectedIndices.indexOf(
-          parseInt(cb.value)
+          parseInt(cb.value, 10)
         ) >= 0;
     });
 }
@@ -2349,9 +2407,7 @@ function saveDIConfig(){
   var di_sel = document.getElementById('di_recipients_select');
 var selectedIndices = [];
 if (di_sel) {
-  di_sel.querySelectorAll(
-    '.recipient-checkbox:checked'
-  ).forEach(function(cb) {
+  eachNode(di_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
     selectedIndices.push(cb.value);
   });
 }
@@ -2431,15 +2487,14 @@ function loadRecipients(){
           label.style.display = 'block';
           label.style.marginBottom = '6px';
           label.style.cursor = 'pointer';
-          
-          label.innerHTML =
-          '<input type="checkbox" class="recipient-checkbox" value="' +
-          idx +
-          '" style="margin-right:8px">' +
-          r.name +
-          ' (' +
-          r.number +
-          ')';
+
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.className = 'recipient-checkbox';
+          cb.value = idx;
+          cb.style.marginRight = '8px';
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode((r.name || '-') + ' (' + (r.number || '-') + ')'));
           sel.appendChild(label);
           });
         }
@@ -2515,7 +2570,8 @@ function loadAIConfig(){
     document.getElementById('ai_loading').style.display = 'none';
     document.getElementById('ai_form_container').style.display = 'block';
     var savedAIIndex = localStorage.getItem('selectedAIIndex') || '0';
-    var selectedIndex = parseInt(savedAIIndex);
+    var selectedIndex = parseInt(savedAIIndex, 10);
+    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= configs.length) selectedIndex = 0;
     document.getElementById('ai_selector').value = selectedIndex;
     switchAI(selectedIndex);
   }).catch(e=>{ if(e !== 'auth') console.log('ai config load failed', e); });
@@ -2523,7 +2579,10 @@ function loadAIConfig(){
 
 function switchAI(index){
   if(!ai_configs || ai_configs.length === 0) return;
+  index = parseInt(index, 10);
+  if (isNaN(index) || index < 0 || index >= ai_configs.length) index = 0;
   var cfg = ai_configs[index];
+  if (!cfg) return;
   document.getElementById('ai_enabled').checked = cfg.enabled;
   document.getElementById('ai_name').value = cfg.name || '';
   setAIEngineeringUnit(cfg.engineering_unit || 'Liters');
@@ -2531,7 +2590,7 @@ function switchAI(index){
   document.getElementById('ai_scale_high').value = cfg.scale_high || 100;
   
   // Set alarm type radio button
-  document.querySelectorAll('input[name="ai_alarm_type"]').forEach(function(r) { r.checked = false; });
+  eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r) { r.checked = false; });
   var typeRadio = document.getElementById('ai_type_' + ['high', 'low', 'inband', 'outband'][cfg.alarm_type || 0]);
   if (typeRadio) typeRadio.checked = true;
   
@@ -2551,11 +2610,10 @@ if (ai_sel) {
   var selectedIndices =
     decodeBitmask(cfg.selected_contacts || 0);
 
-  ai_sel.querySelectorAll('.recipient-checkbox')
-    .forEach(function(cb) {
+  eachNode(ai_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
       cb.checked =
         selectedIndices.indexOf(
-          parseInt(cb.value)
+          parseInt(cb.value, 10)
         ) >= 0;
     });
 }
@@ -2576,8 +2634,8 @@ function saveAIConfig(){
   
   // Get alarm type from radio buttons
   var alarmType = 0;
-  document.querySelectorAll('input[name="ai_alarm_type"]').forEach(function(r) { 
-    if (r.checked) alarmType = parseInt(r.value); 
+  eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r) {
+    if (r.checked) alarmType = parseInt(r.value, 10);
   });
   form_data.append('alarm_type', alarmType);
   
@@ -2594,9 +2652,7 @@ function saveAIConfig(){
   var ai_sel = document.getElementById('ai_recipients_select');
 var selectedIndices = [];
 if (ai_sel) {
-  ai_sel.querySelectorAll(
-    '.recipient-checkbox:checked'
-  ).forEach(function(cb) {
+  eachNode(ai_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
     selectedIndices.push(cb.value);
   });
 }
@@ -2631,17 +2687,18 @@ function loadDOConfig(){
     return r.json();
   }).then(d=>{
     do_configs = d;
-    var saved_idx = parseInt(localStorage.getItem('selectedDOIndex')) || 0;
+    var saved_idx = parseInt(localStorage.getItem('selectedDOIndex'), 10);
+    if (isNaN(saved_idx)) saved_idx = 0;
     if(saved_idx >= 0 && saved_idx < d.length) {
       switchDO(saved_idx);
       document.getElementById('do_selector').value = saved_idx;
     } else {
       switchDO(0);
+      document.getElementById('do_selector').value = 0;
     }
-    // Add change listener to enabled checkbox to trigger save
-    document.getElementById('do_enabled').addEventListener('change', function() {
+    document.getElementById('do_enabled').onchange = function() {
       saveDOConfig();
-    });
+    };
   }).catch(e=>{
     if(e === 'auth') return;
     console.error('Error loading DO config:', e);
@@ -2650,6 +2707,8 @@ function loadDOConfig(){
 
 function switchDO(index){
   if(!do_configs || do_configs.length === 0) return;
+  index = parseInt(index, 10);
+  if (isNaN(index) || index < 0 || index >= do_configs.length) index = 0;
   var cfg = do_configs[index];
   if (!cfg) return;
   document.getElementById('do_enabled').checked = cfg.enabled;
@@ -2667,12 +2726,11 @@ if (relay_sel) {
   var selectedIndices =
     decodeBitmask(cfg.selected_contacts || 0);
 
-  relay_sel.querySelectorAll('.recipient-checkbox')
-    .forEach(function(cb) {
+  eachNode(relay_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
 
       cb.checked =
         selectedIndices.indexOf(
-          parseInt(cb.value)
+          parseInt(cb.value, 10)
         ) >= 0;
 
     });
@@ -2699,9 +2757,7 @@ var selectedIndices = [];
 
 if (relay_sel) {
 
-  relay_sel.querySelectorAll(
-    '.recipient-checkbox:checked'
-  ).forEach(function(cb) {
+  eachNode(relay_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
 
     selectedIndices.push(cb.value);
 
@@ -2761,15 +2817,18 @@ function saveSystemConfig(){
 }
 
 // Restore the last active tab after reloads.
-switchToTab(getInitialTab());
+try {
+  switchToTab(getInitialTab());
+} catch(e) {
+  console.log('tab restore failed', e);
+}
 
 loadDashboard();
 setInterval(loadDashboard, 5000);
 loadRecipients();
 </script>
 <script>
-function showSmallStatus(elId, msg, ok) { var el=document.getElementById(elId); if(!el) return; el.textContent=msg; el.style.display='block'; el.style.color = ok ? 'green' : 'red'; setTimeout(function(){ el.style.display='none'; }, 3500); }
-const MAX_CONTACTS = 5;
+var MAX_CONTACTS = 5;
 
 function loadPhones(){
   fetch('/api/contacts/recipients').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
@@ -2780,7 +2839,7 @@ function loadPhones(){
 function saveContacts(){
   var recEls = document.querySelectorAll('#rec_list .contact-row');
   var recArr = [];
-  recEls.forEach(function(el){
+  eachNode(recEls, function(el){
     var name = (el.querySelector('.c_name')||{}).value || '';
     var num = (el.querySelector('.c_number')||{}).value || '';
     var en = !!(el.querySelector('.c_enabled')||{}).checked;
@@ -2906,7 +2965,7 @@ function showSmallStatus(elementId, message, isSuccess){
   el.style.padding = '12px';
   el.style.borderRadius = '4px';
   el.style.borderLeft = '4px solid ' + (isSuccess ? '#28a745' : '#dc3545');
-  el.innerHTML = message;
+  el.textContent = message;
   setTimeout(function(){ el.style.display = 'none'; }, 4000);
 }
 </script>

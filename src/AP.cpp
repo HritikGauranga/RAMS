@@ -1223,7 +1223,8 @@ static void setupWebServerRoutes() {
       body += "\"default_power_up_state\":" + String(cfg.default_power_up_state ? "true" : "false") + ",";
       body += "\"sms_control_enabled\":" + String(cfg.sms_control_enabled ? "true" : "false") + ",";
       body += "\"alarm_control_enabled\":" + String(cfg.alarm_control_enabled ? "true" : "false") + ",";
-      body += "\"alarm_source\":" + String((int)cfg.alarm_source) + "}";
+      body += "\"alarm_source\":" + String((int)cfg.alarm_source) + ",";
+      body += "\"selected_contacts\":" + String((int)cfg.selected_contacts) + "}";
     }
     body += "]";
     request->send(200, "application/json", body);
@@ -1267,6 +1268,10 @@ static void setupWebServerRoutes() {
     if (request->hasParam("alarm_source", true)) {
       int val = request->getParam("alarm_source", true)->value().toInt();
       cfg.alarm_source = (uint8_t)(val & 0xFF);
+    }
+    if (request->hasParam("selected_contacts", true)) {
+      int val = request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = (uint8_t)(val & 0xFF);
     }
 
     if (!Shared_saveRelayConfig(idx, cfg)) {
@@ -2079,8 +2084,8 @@ static const char *htmlPage() {
                     ">
                 </div>
                 <div class="field">
-                  <label>Relay Control PIN</label>
-                  <input id="sim_relay_pin" type="text" class="input" placeholder="e.g. 1234" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)">
+                  <label>SMS command  PIN</label>
+                  <input id="sim_relay_pin" type="text" class="input" placeholder="e.g. 0000" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)">
                 </div>
             </div>
             <div class="form-actions">
@@ -2826,6 +2831,8 @@ try {
 loadDashboard();
 setInterval(loadDashboard, 5000);
 loadRecipients();
+loadNetworkCfg();
+loadSIMConfig();
 </script>
 <script>
 var MAX_CONTACTS = 5;
@@ -2912,7 +2919,14 @@ function saveNetworkCfg(){
   p.append('gateway_ip', gateway.trim());
 
   fetch('/api/gateway-settings', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('net_status','Saved. Reboot to apply',true); else showSmallStatus('net_status',d.error||'Save failed',false); })
+    .then(r=>r.json()).then(d=>{
+      if(d.success) {
+        showSmallStatus('net_status','Saved. Reboot to apply',true);
+        loadNetworkCfg();
+      } else {
+        showSmallStatus('net_status',d.error||'Save failed',false);
+      }
+    })
     .catch(e=>showSmallStatus('net_status','Save failed',false));
 }
 
@@ -2951,7 +2965,14 @@ function saveSIMConfig(){
   p.append('relay_pin', relayPin.trim());
 
   fetch('/api/sim-config', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
-    .then(r=>r.json()).then(d=>{ if(d.success) showSmallStatus('sim_status','SIM configuration saved',true); else showSmallStatus('sim_status',d.error||'Save failed',false); })
+    .then(r=>r.json()).then(d=>{
+      if(d.success) {
+        showSmallStatus('sim_status','SIM configuration saved',true);
+        loadSIMConfig();
+      } else {
+        showSmallStatus('sim_status',d.error||'Save failed',false);
+      }
+    })
     .catch(e=>showSmallStatus('sim_status','Save failed',false));
 }
 

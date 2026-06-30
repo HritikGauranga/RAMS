@@ -88,6 +88,7 @@ struct RelayConfig {
   bool sms_control_enabled;
   bool alarm_control_enabled;
   uint8_t alarm_source;  // 0=none, 1-2=AI1-AI2, 3-6=DI1-DI4
+  uint8_t selected_contacts; // bitmask for selected contact recipients
 };
 
 struct SIMConfig {

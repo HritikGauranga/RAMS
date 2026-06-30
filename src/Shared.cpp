@@ -37,7 +37,22 @@ struct IOConfigStore {
   RelayConfig relay[RELAY_OUTPUT_COUNT];
 };
 
-static constexpr uint16_t IO_CONFIG_VERSION = 2;
+struct IOConfigStoreV2 {
+  char magic[4];
+  uint16_t version;
+  DigitalInputConfig digital[DIGITAL_INPUT_COUNT];
+  AnalogInputConfig analog[ANALOG_INPUT_COUNT];
+  struct RelayConfigV2 {
+    bool enabled;
+    char name[32];
+    bool default_power_up_state;
+    bool sms_control_enabled;
+    bool alarm_control_enabled;
+    uint8_t alarm_source;
+  } relay[RELAY_OUTPUT_COUNT];
+};
+
+static constexpr uint16_t IO_CONFIG_VERSION = 3;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 
@@ -149,6 +164,14 @@ static bool isValidIOConfigStore(const IOConfigStore &store) {
          store.version == IO_CONFIG_VERSION;
 }
 
+static bool isValidLegacyIOConfigStore(const IOConfigStoreV2 &store) {
+  return store.magic[0] == 'I' &&
+         store.magic[1] == 'O' &&
+         store.magic[2] == 'C' &&
+         store.magic[3] == 'F' &&
+         store.version == 2;
+}
+
 static bool loadIOConfigFromFile() {
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
   if (!LittleFS.exists(IO_CONFIG_PATH)) {
@@ -165,35 +188,80 @@ static bool loadIOConfigFromFile() {
   }
 
   size_t fileSize = f.size();
-  Serial.printf("[IOCFG] Config file size: %u bytes (expected: %u bytes)\n", fileSize, (unsigned int)sizeof(IOConfigStore));
+  Serial.printf("[IOCFG] Config file size: %u bytes (current: %u bytes, legacy: %u bytes)\n",
+                fileSize, (unsigned int)sizeof(IOConfigStore), (unsigned int)sizeof(IOConfigStoreV2));
 
-  IOConfigStore store = {};
-  size_t readLen = f.readBytes(reinterpret_cast<char *>(&store), sizeof(store));
-  f.close();
-  Shared_unlockFileSystem();
+  bool loaded = false;
+  if (fileSize == sizeof(IOConfigStore)) {
+    IOConfigStore store = {};
+    size_t readLen = f.readBytes(reinterpret_cast<char *>(&store), sizeof(store));
+    f.close();
+    Shared_unlockFileSystem();
 
-  Serial.printf("[IOCFG] Read %u bytes from file\n", readLen);
+    Serial.printf("[IOCFG] Read %u bytes from file\n", readLen);
+    if (readLen != sizeof(store)) {
+      Serial.printf("[IOCFG] Size mismatch: read %u bytes but expected %u bytes\n", readLen, (unsigned int)sizeof(store));
+      return false;
+    }
 
-  if (readLen != sizeof(store)) {
-    Serial.printf("[IOCFG] Size mismatch: read %u bytes but expected %u bytes\n", readLen, (unsigned int)sizeof(store));
+    if (!isValidIOConfigStore(store)) {
+      Serial.printf("[IOCFG] Invalid magic or version - Magic: %c%c%c%c, Version: %u (expected %u)\n",
+                    store.magic[0], store.magic[1], store.magic[2], store.magic[3],
+                    store.version, IO_CONFIG_VERSION);
+      return false;
+    }
+
+    if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
+    for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = store.digital[i];
+    for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = store.analog[i];
+    for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) relayConfig[i] = store.relay[i];
+    Shared_unlockState();
+    loaded = true;
+  } else if (fileSize == sizeof(IOConfigStoreV2)) {
+    IOConfigStoreV2 legacyStore = {};
+    size_t readLen = f.readBytes(reinterpret_cast<char *>(&legacyStore), sizeof(legacyStore));
+    f.close();
+    Shared_unlockFileSystem();
+
+    Serial.printf("[IOCFG] Read %u bytes from legacy config file\n", readLen);
+    if (readLen != sizeof(legacyStore)) {
+      Serial.printf("[IOCFG] Legacy size mismatch: read %u bytes but expected %u bytes\n", readLen, (unsigned int)sizeof(legacyStore));
+      return false;
+    }
+
+    if (!isValidLegacyIOConfigStore(legacyStore)) {
+      Serial.printf("[IOCFG] Invalid legacy magic or version - Magic: %c%c%c%c, Version: %u\n",
+                    legacyStore.magic[0], legacyStore.magic[1], legacyStore.magic[2], legacyStore.magic[3],
+                    legacyStore.version);
+      return false;
+    }
+
+    if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
+    for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = legacyStore.digital[i];
+    for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = legacyStore.analog[i];
+    for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+      relayConfig[i].enabled = legacyStore.relay[i].enabled;
+      memcpy(relayConfig[i].name, legacyStore.relay[i].name, sizeof(relayConfig[i].name));
+      relayConfig[i].default_power_up_state = legacyStore.relay[i].default_power_up_state;
+      relayConfig[i].sms_control_enabled = legacyStore.relay[i].sms_control_enabled;
+      relayConfig[i].alarm_control_enabled = legacyStore.relay[i].alarm_control_enabled;
+      relayConfig[i].alarm_source = legacyStore.relay[i].alarm_source;
+      relayConfig[i].selected_contacts = 0;
+    }
+    Shared_unlockState();
+    loaded = true;
+  } else {
+    f.close();
+    Shared_unlockFileSystem();
+    Serial.println("[IOCFG] Unsupported config file layout, using defaults");
     return false;
   }
 
-  if (!isValidIOConfigStore(store)) {
-    Serial.printf("[IOCFG] Invalid magic or version - Magic: %c%c%c%c, Version: %u (expected %u)\n", 
-                  store.magic[0], store.magic[1], store.magic[2], store.magic[3], 
-                  store.version, IO_CONFIG_VERSION);
-    return false;
+  if (loaded) {
+    Serial.println("[IOCFG] Loaded persisted IO config");
+    return true;
   }
-
-  if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
-  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = store.digital[i];
-  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = store.analog[i];
-  for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) relayConfig[i] = store.relay[i];
-  Shared_unlockState();
-
-  Serial.println("[IOCFG] Loaded persisted IO config");
-  return true;
+  return false;
 }
 
 static bool saveIOConfigToFile() {

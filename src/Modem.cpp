@@ -2,6 +2,7 @@
 #include "Shared.h"
 #include <HardwareSerial.h>
 #include <LittleFS.h>
+#include <ETH.h>
 
 HardwareSerial SerialAT(1);
 static bool modemReady = false;
@@ -228,6 +229,10 @@ static String mapSignalStrength(int8_t rssi) {
   return "Very Weak";
 }
 
+static String ipBytesToString(const uint8_t ip[4]) {
+  return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
+}
+
 static String buildSystemStatusSMS() {
   String siteName = readSystemConfigValue("site_name", "Not Set");
   String siteAddress = readSystemConfigValue("site_address", "");
@@ -266,6 +271,65 @@ static void processStatusRequest(const String &sender) {
   String msg = buildSystemStatusSMS();
   if (!sendSMS(sender, msg)) {
     Serial.println("[SMS] Failed to send status SMS to " + sender);
+  }
+}
+
+static String buildIpStatusSMS() {
+  GatewaySettings settings = {};
+  Shared_getGatewaySettings(settings);
+
+  String ipAddress;
+  if (settings.useDhcp) {
+    IPAddress localIp = ETH.localIP();
+    if (localIp[0] != 0 || localIp[1] != 0 || localIp[2] != 0 || localIp[3] != 0) {
+      ipAddress = localIp.toString();
+    }
+  }
+  if (ipAddress.length() == 0) {
+    ipAddress = ipBytesToString(settings.staticIp);
+  }
+
+  String gateway = ipBytesToString(settings.gatewayIp);
+  String dhcp = settings.useDhcp ? "Enabled" : "Disabled";
+
+  String msg = "IP Address: " + ipAddress + "\n";
+  msg += "DHCP: " + dhcp + "\n";
+  msg += "Gateway: " + gateway;
+  return msg;
+}
+
+static void processIpRequest(const String &sender, const String &body) {
+  if (!isAuthorizedSender(sender)) {
+    Serial.println("[SMS] Unauthorized sender for IP request: " + sender);
+    return;
+  }
+
+  String upperBody = body;
+  upperBody.toUpperCase();
+  int cmdIdx = upperBody.indexOf("GET IP%");
+  if (cmdIdx < 0) {
+    Serial.println("[SMS] Invalid IP request format from: " + sender);
+    return;
+  }
+
+  String pin = body.substring(cmdIdx + 7);
+  int newline = pin.indexOf('\n');
+  if (newline >= 0) pin = pin.substring(0, newline);
+  pin.trim();
+
+  SIMConfig simCfg = {};
+  Shared_getSIMConfig(simCfg);
+  String storedPin = String(simCfg.relay_pin);
+  storedPin.trim();
+
+  if (storedPin.length() == 0 || pin != storedPin) {
+    Serial.println("[SMS] Invalid PIN for IP request from: " + sender);
+    return;
+  }
+
+  String msg = buildIpStatusSMS();
+  if (!sendSMS(sender, msg)) {
+    Serial.println("[SMS] Failed to send IP SMS to " + sender);
   }
 }
 
@@ -398,6 +462,8 @@ static void checkAndProcessSMS() {
         upperBody.toUpperCase();
         if (upperBody.indexOf("GET STATUS") >= 0) {
           processStatusRequest(sender);
+        } else if (upperBody.indexOf("GET IP%") >= 0) {
+          processIpRequest(sender, body);
         } else {
           int cmdIdx = body.indexOf("Set Relay%");
           if (cmdIdx >= 0) {
@@ -422,6 +488,8 @@ static void checkAndProcessSMS() {
     upperBody.toUpperCase();
     if (upperBody.indexOf("GET STATUS") >= 0) {
       processStatusRequest(sender);
+    } else if (upperBody.indexOf("GET IP%") >= 0) {
+      processIpRequest(sender, body);
     } else {
       int cmdIdx = body.indexOf("Set Relay%");
       if (cmdIdx >= 0) {

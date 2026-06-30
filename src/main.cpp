@@ -5,14 +5,16 @@
 #include <freertos/task.h>
 
 #include "AP.h"
+#include "IOScanner.h"
 #include "Modem.h"
 #include "Shared.h"
 #include "TCP.h"
 
 namespace {
-  constexpr uint32_t TCP_TASK_STACK   = 6144;
-  constexpr uint32_t MODEM_TASK_STACK = 8192;
-  constexpr uint32_t AP_TASK_STACK    = 4096;
+  constexpr uint32_t TCP_TASK_STACK      = 6144;
+  constexpr uint32_t MODEM_TASK_STACK    = 8192;
+  constexpr uint32_t AP_TASK_STACK       = 4096;
+  constexpr uint32_t IOSCANNER_TASK_STACK = 4096;
 }
 
 void setup() {
@@ -27,14 +29,11 @@ void setup() {
   digitalWrite(AP_STATUS_LED_PIN, LOW);
   digitalWrite(MODEM_INIT_STATUS_PIN, LOW);
 
-  // Mount LittleFS - try without format first, then format if needed
+  // Mount LittleFS - NEVER auto-format to preserve user data
   if (!LittleFS.begin(false)) {
-    Serial.println("[MAIN] LittleFS not formatted, formatting now...");
-    if (!LittleFS.begin(true)) {
-      Serial.println("[ERROR] LittleFS mount and format failed — halting");
-      while (true) delay(1000);
-    }
-    Serial.println("[MAIN] LittleFS formatted successfully");
+    Serial.println("[ERROR] LittleFS mount failed!");
+    Serial.println("[ERROR] Use PlatformIO 'Upload Filesystem Image' if first boot");
+    while (true) delay(1000);
   }
   
   Serial.println("[MAIN] LittleFS mounted successfully");
@@ -54,6 +53,11 @@ void setup() {
 
   TCP_init();
 
+  if (!IOScanner_init()) {
+    Serial.println("[IOScanner] I/O Scanner init failed — halting");
+    while (true) delay(1000);
+  }
+
   if (!Modem_init()) {
     Serial.println("[MODEM] Modem init setup failed — halting");
     while (true) delay(1000);
@@ -61,16 +65,18 @@ void setup() {
 
   // ---------------------------------------------------------------------------
   // Task layout
-  //   Core 0: SmsTask  (priority 2) — handles modem init and SMS dispatch
-  //   Core 1: TCPTask  (priority 2) — network / web UI
-  //           ApTask   (priority 1) — Wi‑Fi AP config server
+  //   Core 0: SmsTask      (priority 2) — handles modem init and SMS dispatch
+  //   Core 1: TCPTask      (priority 2) — network / web UI
+  //           IoScanTask   (priority 3) — I/O scanning (highest priority)
+  //           ApTask       (priority 1) — Wi‑Fi AP config server
   // ---------------------------------------------------------------------------
 
-  xTaskCreatePinnedToCore(Modem_task,   "SmsTask",  MODEM_TASK_STACK, nullptr, 2, nullptr, 0); 
-  xTaskCreatePinnedToCore(TCP_taskLoop, "TCPTask",  TCP_TASK_STACK,   nullptr, 2, nullptr, 1);
-  xTaskCreatePinnedToCore(AP_taskLoop,  "ApTask",   AP_TASK_STACK,    nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(Modem_task,         "SmsTask",    MODEM_TASK_STACK,    nullptr, 2, nullptr, 0); 
+  xTaskCreatePinnedToCore(TCP_taskLoop,       "TCPTask",    TCP_TASK_STACK,      nullptr, 2, nullptr, 1);
+  xTaskCreatePinnedToCore(IOScanner_taskLoop, "IoScanTask", IOSCANNER_TASK_STACK, nullptr, 3, nullptr, 1);
+  xTaskCreatePinnedToCore(AP_taskLoop,        "ApTask",     AP_TASK_STACK,       nullptr, 1, nullptr, 1);
 
-  Serial.println("[SYSTEM] Tasks started: SmsTask, TCPTask, ApTask");
+  Serial.println("[SYSTEM] Tasks started: SmsTask, TCPTask, IoScanTask, ApTask");
 }
 
 

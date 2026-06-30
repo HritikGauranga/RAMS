@@ -86,17 +86,21 @@ static bool normalizePhoneNumber(const String &input, String &normalized) {
 }
 
 // ---------------------------------------------------------------------------
-// AT command
+// AT command (with optional silent mode)
 // ---------------------------------------------------------------------------
-static String sendAT(const String &cmd, int timeout) {
+static String sendAT(const String &cmd, int timeout, bool silent = false) {
   while (SerialAT.available()) SerialAT.read();
 
-  Serial.println("[AT] >> " + cmd);
+  if (!silent) {
+    Serial.println("[AT] >> " + cmd);
+  }
   SerialAT.println(cmd);
   delay(100);
 
   String response = readSerialATResponse((unsigned long)timeout);
-  Serial.println(response.length() ? "[AT] << " + response : "[AT] << [NO RESPONSE]");
+  if (!silent) {
+    Serial.println(response.length() ? "[AT] << " + response : "[AT] << [NO RESPONSE]");
+  }
   return response;
 }
 
@@ -161,12 +165,16 @@ static bool isAuthorizedSender(const String &sender) {
 static String readTextFileValue(const char *path, const String &fallback) {
   String value = fallback;
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return value;
-  if (LittleFS.exists(path)) {
-    File f = LittleFS.open(path, "r");
-    if (f) {
-      value = f.readString();
-      f.close();
-    }
+  
+  if (!LittleFS.exists(path)) {
+    Shared_unlockFileSystem();
+    return fallback;
+  }
+  
+  File f = LittleFS.open(path, "r");
+  if (f) {
+    value = f.readString();
+    f.close();
   }
   Shared_unlockFileSystem();
   value.trim();
@@ -176,20 +184,24 @@ static String readTextFileValue(const char *path, const String &fallback) {
 static String readSystemConfigValue(const String &key, const String &fallback) {
   String value = fallback;
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return value;
-  if (LittleFS.exists("/system_config.json")) {
-    File f = LittleFS.open("/system_config.json", "r");
-    if (f) {
-      String json = f.readString();
-      f.close();
-      String pattern = "\"" + key + "\"";
-      int keyPos = json.indexOf(pattern);
-      if (keyPos >= 0) {
-        int colonPos = json.indexOf(':', keyPos + pattern.length());
-        if (colonPos >= 0) {
-          int q1 = json.indexOf('"', colonPos + 1);
-          int q2 = json.indexOf('"', q1 + 1);
-          if (q1 >= 0 && q2 > q1) value = json.substring(q1 + 1, q2);
-        }
+  
+  if (!LittleFS.exists("/system_config.json")) {
+    Shared_unlockFileSystem();
+    return fallback;
+  }
+  
+  File f = LittleFS.open("/system_config.json", "r");
+  if (f) {
+    String json = f.readString();
+    f.close();
+    String pattern = "\"" + key + "\"";
+    int keyPos = json.indexOf(pattern);
+    if (keyPos >= 0) {
+      int colonPos = json.indexOf(':', keyPos + pattern.length());
+      if (colonPos >= 0) {
+        int q1 = json.indexOf('"', colonPos + 1);
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q1 >= 0 && q2 > q1) value = json.substring(q1 + 1, q2);
       }
     }
   }
@@ -439,10 +451,10 @@ static String getQuotedField(const String &line, uint8_t fieldIndex) {
 static void checkAndProcessSMS() {
   if (!modemReady) return;
 
-  String modeResp = sendAT("AT+CMGF=1", 2000);
+  String modeResp = sendAT("AT+CMGF=1", 2000, true);
   if (modeResp.indexOf("OK") == -1) return;
 
-  String resp = sendAT("AT+CMGL=\"ALL\"", 5000);
+  String resp = sendAT("AT+CMGL=\"ALL\"", 5000, true);
   if (resp.indexOf("+CMGL:") < 0) return;
 
   int pos = 0;
@@ -470,7 +482,7 @@ static void checkAndProcessSMS() {
             processRelayCommand(sender, body.substring(cmdIdx));
           }
         }
-        sendAT("AT+CMGD=" + String(currentIndex), 2000);
+        sendAT("AT+CMGD=" + String(currentIndex), 2000, true);
       }
       int idxStart = line.indexOf(' ');
       int idxEnd = line.indexOf(',', idxStart);
@@ -496,7 +508,7 @@ static void checkAndProcessSMS() {
         processRelayCommand(sender, body.substring(cmdIdx));
       }
     }
-    sendAT("AT+CMGD=" + String(currentIndex), 2000);
+    sendAT("AT+CMGD=" + String(currentIndex), 2000, true);
   }
 }
 

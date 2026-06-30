@@ -1417,7 +1417,8 @@ void AP_taskLoop(void *pvParameters) {
   delay(50);
 
   // Reset old serial state when firmware build changes.
-  clearStaleSerialForNewBuild();
+  // DISABLED: Serial number should persist across firmware updates
+  // clearStaleSerialForNewBuild();
 
   // Keep Web UI always active (Ethernet IP + AP IP when AP mode is enabled).
   if (server == nullptr) {

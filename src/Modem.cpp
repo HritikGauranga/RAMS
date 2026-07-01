@@ -12,7 +12,7 @@ static unsigned long lastNotReadyLogMs = 0;
 static bool simMissingLatched = false;
 static unsigned long lastSimRecheckMs = 0;
 static unsigned long lastSmsCheckMs = 0;
-
+static volatile bool modemSerialBusy = false;
 
 
 // ---------------------------------------------------------------------------
@@ -573,6 +573,7 @@ static bool sendSMS(const String &number, const String &message) {
   sendAT("AT+CMGF=1",          2000);
 
   Serial.printf("[SMS] Sending to %s\n", number.c_str());
+  modemSerialBusy = true;
   while (SerialAT.available()) SerialAT.read();
 
   SerialAT.print("AT+CMGS=\"");
@@ -586,6 +587,7 @@ static bool sendSMS(const String &number, const String &message) {
     Serial.println("[SMS] No '>' prompt received - aborting");
     SerialAT.write(26);
     delay(500);
+    modemSerialBusy = false;
     consecutiveModemHealthFailures++;
     if (consecutiveModemHealthFailures >= 2) {
       setModemReady(false);
@@ -603,6 +605,7 @@ static bool sendSMS(const String &number, const String &message) {
   String res = readSerialATResponse(15000);
   Serial.printf("[SMS] CMGS result: %s\n", res.c_str());
 
+  modemSerialBusy = false;
   bool ok = res.indexOf("+CMGS:") != -1 && res.indexOf("ERROR") == -1;
   if (ok) {
     consecutiveModemHealthFailures = 0;
@@ -701,19 +704,25 @@ bool Modem_init() {
 }
 
 // ---------------------------------------------------------------------------
-// dispatchMessage - use recipient contacts only
+// dispatchMessage - sends SMS using DI config (message + selected_contacts)
 // ---------------------------------------------------------------------------
 static int16_t dispatchMessage(size_t inputIndex) {
   ContactList rec = {};
   if (!Shared_getRecipientContacts(rec)) return STATUS_ERROR_CONFIG;
   if (rec.count == 0) return STATUS_ERROR_EMPTY;
 
+  DigitalInputConfig diCfg = {};
+  Shared_getDigitalInputConfig(inputIndex, diCfg);
+
+  String msg = String(diCfg.alarm_message);
+  if (msg.length() == 0) msg = String(diCfg.name) + " ALARM";
+
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   uint8_t sentCount = 0;
-  String msg = "Alarm on input " + String((unsigned)inputIndex + 1);
 
   for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
     if (!rec.items[i].enabled) continue;
+    if (!(diCfg.selected_contacts & (1 << i))) continue;  // Respect bitmask
     String number = String(rec.items[i].number);
     if (number.length() == 0) continue;
     String normalizedNumber;
@@ -738,6 +747,42 @@ static int16_t dispatchMessage(size_t inputIndex) {
 }
 
 // ---------------------------------------------------------------------------
+// dispatchReturnMessage - sends return SMS using DI config
+// ---------------------------------------------------------------------------
+static int16_t dispatchReturnMessage(size_t inputIndex) {
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return STATUS_ERROR_CONFIG;
+  if (rec.count == 0) return STATUS_ERROR_EMPTY;
+
+  DigitalInputConfig diCfg = {};
+  Shared_getDigitalInputConfig(inputIndex, diCfg);
+
+  if (!diCfg.return_sms_enabled) return STATUS_IDLE;
+
+  String msg = String(diCfg.return_message);
+  if (msg.length() == 0) msg = String(diCfg.name) + " RETURN TO NORMAL";
+
+  Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
+  uint8_t sentCount = 0;
+
+  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+    if (!rec.items[i].enabled) continue;
+    if (!(diCfg.selected_contacts & (1 << i))) continue;
+    String number = String(rec.items[i].number);
+    if (number.length() == 0) continue;
+    String normalizedNumber;
+    if (!normalizePhoneNumber(number, normalizedNumber)) continue;
+    if (!modemReady) break;
+    if (sendSMS(normalizedNumber, msg)) sentCount++;
+  }
+
+  Shared_writeInputRegister(MODEM_STATUS_REGISTER,
+    modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
+
+  return sentCount > 0 ? (int16_t)sentCount : STATUS_ERROR_SEND;
+}
+
+// ---------------------------------------------------------------------------
 // Rising-edge scanner + pending-slot tracker
 //
 // pendingSlots[] — per-slot flag set on rising edge and consumed after
@@ -748,6 +793,7 @@ static int16_t dispatchMessage(size_t inputIndex) {
 // This resets the slot so the PLC can write 1 again to retrigger.
 // ---------------------------------------------------------------------------
 static bool pendingSlots[DIGITAL_INPUT_COUNT] = {};
+static bool pendingReturnSlots[DIGITAL_INPUT_COUNT] = {};
 static uint8_t lowStableCount[DIGITAL_INPUT_COUNT] = {};
 
 static void scanTriggerEdges(bool previousState[DIGITAL_INPUT_COUNT]) {
@@ -762,6 +808,7 @@ static void scanTriggerEdges(bool previousState[DIGITAL_INPUT_COUNT]) {
       if (previousState[i] && lowStableCount[i] >= LOW_REARM_SCANS) {
         Shared_writeAlarmResult(i, STATUS_IDLE);
         previousState[i] = false;
+        pendingReturnSlots[i] = true;  // Queue return SMS
         Serial.printf("[EDGE] Input %u cleared (-> 0)\n", (unsigned)i);
       }
       continue;
@@ -793,24 +840,26 @@ static bool takeNextPendingSlot(size_t &slotIndex) {
   return false;
 }
 
+static bool takeNextPendingReturnSlot(size_t &slotIndex) {
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+    if (!pendingReturnSlots[i]) continue;
+    slotIndex = i;
+    pendingReturnSlots[i] = false;
+    return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Modem_getSignalStrength
 // ---------------------------------------------------------------------------
 // Returns signal strength 0-31 (where 0=very weak, 31=excellent), -1 on error, -2 if SIM not inserted
 int8_t Modem_getSignalStrength() {
-  if (simMissingLatched) {
-    Serial.println("[MODEM] SIM not inserted, cannot get signal strength");
-    return -2;
-  }
+  if (simMissingLatched) return -2;
+  if (!modemReady) return -1;
+  if (modemSerialBusy) return -1;
 
-  if (!modemReady) {
-    Serial.println("[MODEM] Modem not ready, cannot get signal strength");
-    return -1;
-  }
-
-  // AT+CSQ returns +CSQ: <rssi>,<ber>
-  // rssi: 0=very weak, 1-30=weak to excellent, 31=excellent
-  String response = sendAT("AT+CSQ", 2000);
+  String response = sendAT("AT+CSQ", 2000, true);
   
   if (response.indexOf("+CSQ:") == -1) {
     Serial.println("[MODEM] No CSQ response from modem");
@@ -887,6 +936,11 @@ void Modem_task(void *pvParameters) {
 
       int16_t result = dispatchMessage(slotToProcess);
       Shared_writeAlarmResult(slotToProcess, result);
+    }
+
+    size_t returnSlotToProcess = 0;
+    if (modemReady && takeNextPendingReturnSlot(returnSlotToProcess)) {
+      dispatchReturnMessage(returnSlotToProcess);
     }
 
     if (now - lastSmsCheckMs >= 5000) {

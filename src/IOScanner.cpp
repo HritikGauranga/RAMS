@@ -363,13 +363,9 @@ static void processDigitalInput(size_t index) {
     alarmCondition = state.lastStableValue == true;
   }
   
-  // Update shared state (0=normal, 1=alarm for display purposes)
-  Shared_writeDigitalInput(index, alarmCondition ? 1 : 0);
-  
   if (alarmCondition) {
     // Alarm condition present
     if (!state.inAlarm) {
-      // Just entered alarm condition
       if (state.alarmTriggerTime == 0) {
         state.alarmTriggerTime = now;
         Serial.printf("[DI%d] Alarm condition detected (TTA: %dms)\n", 
@@ -379,21 +375,20 @@ static void processDigitalInput(size_t index) {
         state.inAlarm = true;
         state.returnTriggerTime = 0;
         Serial.printf("[DI%d] ALARM TRIGGERED\n", index + 1);
-        
-        // Send alarm SMS
+
+        // Write 1 only now — Modem task sees the rising edge here, after TTA
+        Shared_writeDigitalInput(index, 1);
+
         if (!state.alarmSmsSent) {
           sendDigitalAlarmSMS(index, cfg, true);
           state.alarmSmsSent = true;
         }
-        
-        // Update alarm result register
+
         Shared_writeAlarmResult(index, STATUS_ERROR_SEND);
-        
-        // Trigger relay if configured
+
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
-            // Check if this relay is linked to this DI (alarm_source: 3=DI1, 4=DI2, 5=DI3, 6=DI4)
             if (rcfg.alarm_source == (index + 3)) {
               Shared_setRelayState(r, true);
               Serial.printf("[DI%d] Activating Relay%d due to alarm\n", index + 1, r + 1);
@@ -404,10 +399,9 @@ static void processDigitalInput(size_t index) {
     }
   } else {
     // No alarm condition
-    state.alarmTriggerTime = 0;  // Reset alarm trigger timer
-    
+    state.alarmTriggerTime = 0;
+
     if (state.inAlarm) {
-      // Currently in alarm, check for return
       if (state.returnTriggerTime == 0) {
         state.returnTriggerTime = now;
         Serial.printf("[DI%d] Return condition detected (TTR: %dms)\n", 
@@ -417,14 +411,14 @@ static void processDigitalInput(size_t index) {
         state.inAlarm = false;
         state.alarmSmsSent = false;
         Serial.printf("[DI%d] ALARM CLEARED\n", index + 1);
-        
-        // Send return SMS
+
+        // Write 0 only now — Modem task sees the falling edge here, after TTR
+        Shared_writeDigitalInput(index, 0);
+
         sendDigitalAlarmSMS(index, cfg, false);
-        
-        // Update alarm result register
+
         Shared_writeAlarmResult(index, STATUS_IDLE);
-        
-        // Deactivate relay if configured
+
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {

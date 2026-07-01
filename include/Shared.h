@@ -53,8 +53,8 @@ struct ContactList {
 struct DigitalInputConfig {
   bool enabled;
   bool normallyClosed; // true if NC
-  uint16_t tta_ms; // time to alarm
-  uint16_t ttr_ms; // time to return
+  uint32_t tta_ms; // time to alarm
+  uint32_t ttr_ms; // time to return
   char name[32];
   bool alarm_sms_enabled;
   bool return_sms_enabled;
@@ -72,8 +72,8 @@ struct AnalogInputConfig {
   uint8_t alarm_type;         // 0=High, 1=Low, 2=In-Band, 3=Out-of-Band
   float set_point;            // Alarm trigger threshold
   float reset_point;          // Alarm clear threshold
-  uint16_t tta_ms;            // Time to alarm (milliseconds)
-  uint16_t ttr_ms;            // Time to return (milliseconds)
+  uint32_t tta_ms;            // Time to alarm (milliseconds)
+  uint32_t ttr_ms;            // Time to return (milliseconds)
   bool alarm_sms_enabled;
   bool return_sms_enabled;
   char alarm_message[64];

@@ -1024,8 +1024,8 @@ static void setupWebServerRoutes() {
       body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
       body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
       body += "\"normally_closed\":" + String(cfg.normallyClosed ? "true" : "false") + ",";
-      body += "\"tta_ms\":" + String(cfg.tta_ms) + ",";
-      body += "\"ttr_ms\":" + String(cfg.ttr_ms) + ",";
+      body += "\"tta_ms\":" + String(cfg.tta_ms / 1000) + ",";
+      body += "\"ttr_ms\":" + String(cfg.ttr_ms / 1000) + ",";
       body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
       body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
       body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
@@ -1067,12 +1067,12 @@ static void setupWebServerRoutes() {
       cfg.name[sizeof(cfg.name) - 1] = '\0';
     }
     if (request->hasParam("tta_ms", true)) {
-      int val = request->getParam("tta_ms", true)->value().toInt();
-      cfg.tta_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+      int val = request->getParam("tta_ms", true)->value().toInt() * 1000;
+      cfg.tta_ms = (val >= 1000) ? (uint32_t)val : 1000;
     }
     if (request->hasParam("ttr_ms", true)) {
-      int val = request->getParam("ttr_ms", true)->value().toInt();
-      cfg.ttr_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+      int val = request->getParam("ttr_ms", true)->value().toInt() * 1000;
+      cfg.ttr_ms = (val >= 1000) ? (uint32_t)val : 1000;
     }
     if (request->hasParam("alarm_sms_enabled", true)) cfg.alarm_sms_enabled = (request->getParam("alarm_sms_enabled", true)->value() == "1");
     if (request->hasParam("return_sms_enabled", true)) cfg.return_sms_enabled = (request->getParam("return_sms_enabled", true)->value() == "1");
@@ -1120,8 +1120,8 @@ static void setupWebServerRoutes() {
       body += "\"alarm_type\":" + String(cfg.alarm_type) + ",";
       body += "\"set_point\":" + String(cfg.set_point, 4) + ",";
       body += "\"reset_point\":" + String(cfg.reset_point, 4) + ",";
-      body += "\"tta_ms\":" + String(cfg.tta_ms) + ",";
-      body += "\"ttr_ms\":" + String(cfg.ttr_ms) + ",";
+      body += "\"tta_ms\":" + String(cfg.tta_ms / 1000) + ",";
+      body += "\"ttr_ms\":" + String(cfg.ttr_ms / 1000) + ",";
       body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
       body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
       body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
@@ -1174,12 +1174,12 @@ static void setupWebServerRoutes() {
     if (request->hasParam("set_point", true)) cfg.set_point = request->getParam("set_point", true)->value().toFloat();
     if (request->hasParam("reset_point", true)) cfg.reset_point = request->getParam("reset_point", true)->value().toFloat();
     if (request->hasParam("tta_ms", true)) {
-      int val = request->getParam("tta_ms", true)->value().toInt();
-      cfg.tta_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+      int val = request->getParam("tta_ms", true)->value().toInt() * 1000;
+      cfg.tta_ms = (val >= 1000) ? (uint32_t)val : 1000;
     }
     if (request->hasParam("ttr_ms", true)) {
-      int val = request->getParam("ttr_ms", true)->value().toInt();
-      cfg.ttr_ms = (val >= 1 && val <= 65535) ? (uint16_t)val : 1;
+      int val = request->getParam("ttr_ms", true)->value().toInt() * 1000;
+      cfg.ttr_ms = (val >= 1000) ? (uint32_t)val : 1000;
     }
     if (request->hasParam("alarm_sms_enabled", true)) cfg.alarm_sms_enabled = (request->getParam("alarm_sms_enabled", true)->value() == "1");
     if (request->hasParam("return_sms_enabled", true)) cfg.return_sms_enabled = (request->getParam("return_sms_enabled", true)->value() == "1");
@@ -1638,8 +1638,8 @@ static const char *htmlPage() {
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
                     <select id="di_type" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
-                      <option value="0">Normally Open (NO)</option>
-                      <option value="1">Normally Closed (NC)</option>
+                      <option value="0">Alarm on Close (Normally Open)</option>
+                      <option value="1">Alarm on Open (Normally Close)</option>
                     </select>
                   </div>
                 </div>

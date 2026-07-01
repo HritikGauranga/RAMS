@@ -1620,7 +1620,7 @@ static const char *htmlPage() {
               </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <input type="checkbox" id="di_enabled" style="width:18px;height:18px;cursor:pointer">
+              <input type="checkbox" id="di_enabled" onchange="updateDIFieldsState()" style="width:18px;height:18px;cursor:pointer">
               <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
             </div>
           </div>
@@ -1638,6 +1638,7 @@ static const char *htmlPage() {
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
                     <select id="di_type" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
+                      <option value="0">Alarm on Close (Normally Open)</option>
                       <option value="0">Alarm on Close (Normally Open)</option>
                       <option value="1">Alarm on Open (Normally Close)</option>
                     </select>
@@ -1735,7 +1736,7 @@ static const char *htmlPage() {
               </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <input type="checkbox" id="ai_enabled" style="width:18px;height:18px;cursor:pointer">
+              <input type="checkbox" id="ai_enabled" onchange="updateAIFieldsState()" style="width:18px;height:18px;cursor:pointer">
               <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
             </div>
           </div>
@@ -1923,7 +1924,7 @@ static const char *htmlPage() {
               </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <input type="checkbox" id="do_enabled" style="width:18px;height:18px;cursor:pointer">
+              <input type="checkbox" id="do_enabled" onchange="updateDOFieldsState()" style="width:18px;height:18px;cursor:pointer">
               <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Output</label>
             </div>
           </div>
@@ -2393,6 +2394,17 @@ function switchDI(index){
   
   window.current_di_index = index;
   localStorage.setItem('selectedDIIndex', index);
+  updateDIFieldsState();
+}
+
+function updateDIFieldsState(){
+  var enabled = document.getElementById('di_enabled').checked;
+  var fields = ['di_name','di_type','di_tta','di_ttr','di_alarm_sms','di_return_sms','di_alarm_msg','di_return_msg'];
+  fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
+  var di_sel = document.getElementById('di_recipients_select');
+  if (di_sel) eachNode(di_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
+  var saveBtn = document.querySelector('#digital .btn.primary');
+  if (saveBtn) saveBtn.disabled = false; // Save is always allowed (to save enabled=false)
 }
 
 function saveDIConfig(){
@@ -2626,6 +2638,16 @@ if (ai_sel) {
   
   window.current_ai_index = index;
   localStorage.setItem('selectedAIIndex', index);
+  updateAIFieldsState();
+}
+
+function updateAIFieldsState(){
+  var enabled = document.getElementById('ai_enabled').checked;
+  var fields = ['ai_name','ai_unit_select','ai_unit_custom','ai_scale_low','ai_scale_high','ai_set_point','ai_reset_point','ai_tta','ai_ttr','ai_alarm_sms','ai_return_sms','ai_alarm_msg','ai_return_msg'];
+  fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
+  eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r){ r.disabled=!enabled; });
+  var ai_sel = document.getElementById('ai_recipients_select');
+  if (ai_sel) eachNode(ai_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
 }
 
 function saveAIConfig(){
@@ -2702,9 +2724,7 @@ function loadDOConfig(){
       switchDO(0);
       document.getElementById('do_selector').value = 0;
     }
-    document.getElementById('do_enabled').onchange = function() {
-      saveDOConfig();
-    };
+
   }).catch(e=>{
     if(e === 'auth') return;
     console.error('Error loading DO config:', e);
@@ -2744,6 +2764,15 @@ if (relay_sel) {
   
   window.current_do_index = index;
   localStorage.setItem('selectedDOIndex', index);
+  updateDOFieldsState();
+}
+
+function updateDOFieldsState(){
+  var enabled = document.getElementById('do_enabled').checked;
+  var fields = ['do_name','do_powerup','do_sms_control','do_alarm_control','do_alarm_source'];
+  fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
+  var relay_sel = document.getElementById('relay_recipients_select');
+  if (relay_sel) eachNode(relay_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
 }
 
 function saveDOConfig(){

@@ -1514,7 +1514,7 @@ static const char *htmlPage() {
         <li data-tab="phones">Contact Config</li>
         <li data-tab="network">Network Config</li>
         <li data-tab="sysconfig">System Config</li>
-        <li data-tab="diag">Diagnostics</li>
+
       </ul>
     </div>
     <div class="content">
@@ -1639,8 +1639,7 @@ static const char *htmlPage() {
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
                     <select id="di_type" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
                       <option value="0">Alarm on Close (Normally Open)</option>
-                      <option value="0">Alarm on Close (Normally Open)</option>
-                      <option value="1">Alarm on Open (Normally Close)</option>
+                      <option value="1">Alarm on Open (Normally Closed)</option>
                     </select>
                   </div>
                 </div>
@@ -2129,7 +2128,6 @@ static const char *htmlPage() {
          </div>
         </div>
       </div>
-      <div id="diag" class="tab" style="display:none"><div class="panel"><h2>Diagnostics</h2><div class="subtitle">System diagnostics and status (placeholder).</div></div></div>
     </div>
   </div>
 
@@ -2142,7 +2140,6 @@ var tabLabels = {
   'phones': { title: 'Contact Config'},
   'network': { title: 'Network Config'},
   'sysconfig': { title: 'System Config'},
-  'diag': { title: 'Diagnostics',}
 };
 
 function eachNode(nodes, fn) {

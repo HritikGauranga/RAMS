@@ -1805,19 +1805,19 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Type</h3>
                 <div style="display:flex;gap:16px;flex-wrap:wrap">
                   <div style="display:flex;align-items:center;gap:6px">
-                    <input type="radio" id="ai_type_high" name="ai_alarm_type" value="0" style="width:16px;height:16px;cursor:pointer">
+                    <input type="radio" id="ai_type_high" name="ai_alarm_type" value="0" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer">High Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
-                    <input type="radio" id="ai_type_low" name="ai_alarm_type" value="1" style="width:16px;height:16px;cursor:pointer">
+                    <input type="radio" id="ai_type_low" name="ai_alarm_type" value="1" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer">Low Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
-                    <input type="radio" id="ai_type_inband" name="ai_alarm_type" value="2" style="width:16px;height:16px;cursor:pointer">
+                    <input type="radio" id="ai_type_inband" name="ai_alarm_type" value="2" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer">In-Band Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
-                    <input type="radio" id="ai_type_outband" name="ai_alarm_type" value="3" style="width:16px;height:16px;cursor:pointer">
+                    <input type="radio" id="ai_type_outband" name="ai_alarm_type" value="3" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer">Out-of-Band Alarm</label>
                   </div>
                 </div>
@@ -1832,18 +1832,18 @@ static const char *htmlPage() {
                     <input type="number"
                     id="ai_set_point"
                     step="0.01"
-                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
+                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12);updateAIThresholdHints()"
                     style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Alarm triggers at this value</div>
+                    <div id="ai_set_point_hint" style="font-size:11px;color:#999;margin-top:4px">Alarm triggers at this value</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Reset Point</label>
                     <input type="number"
                     id="ai_reset_point"
                     step="0.01"
-                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
+                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12);updateAIThresholdHints()"
                     style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                    <div style="font-size:11px;color:#999;margin-top:4px">Alarm clears at this value</div>
+                    <div id="ai_reset_point_hint" style="font-size:11px;color:#999;margin-top:4px">Alarm clears at this value</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Alarm (seconds)</label>
@@ -2611,6 +2611,7 @@ function switchAI(index){
   eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r) { r.checked = false; });
   var typeRadio = document.getElementById('ai_type_' + ['high', 'low', 'inband', 'outband'][cfg.alarm_type || 0]);
   if (typeRadio) typeRadio.checked = true;
+  updateAIThresholdHints();
   
   document.getElementById('ai_set_point').value = cfg.set_point || 0;
   document.getElementById('ai_reset_point').value = cfg.reset_point || 0;
@@ -2641,6 +2642,32 @@ if (ai_sel) {
   updateAIFieldsState();
 }
 
+function getSelectedAlarmType(){
+  var t = 0;
+  eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r){ if(r.checked) t = parseInt(r.value,10); });
+  return t;
+}
+
+function updateAIThresholdHints(){
+  var t = getSelectedAlarmType();
+  var sh = document.getElementById('ai_set_point_hint');
+  var rh = document.getElementById('ai_reset_point_hint');
+  if (!sh || !rh) return;
+  if (t === 0) { // High
+    sh.textContent = 'Alarm triggers when value rises ABOVE this (must be > Reset Point)';
+    rh.textContent = 'Alarm clears when value falls BELOW this (must be < Set Point)';
+  } else if (t === 1) { // Low
+    sh.textContent = 'Alarm triggers when value falls BELOW this (must be < Reset Point)';
+    rh.textContent = 'Alarm clears when value rises ABOVE this (must be > Set Point)';
+  } else if (t === 2) { // In-Band
+    sh.textContent = 'Lower band boundary';
+    rh.textContent = 'Upper band boundary (must be > Set Point)';
+  } else { // Out-of-Band
+    sh.textContent = 'Lower band boundary';
+    rh.textContent = 'Upper band boundary (must be > Set Point)';
+  }
+}
+
 function updateAIFieldsState(){
   var enabled = document.getElementById('ai_enabled').checked;
   var fields = ['ai_name','ai_unit_select','ai_unit_custom','ai_scale_low','ai_scale_high','ai_set_point','ai_reset_point','ai_tta','ai_ttr','ai_alarm_sms','ai_return_sms','ai_alarm_msg','ai_return_msg'];
@@ -2667,8 +2694,29 @@ function saveAIConfig(){
   });
   form_data.append('alarm_type', alarmType);
   
-  form_data.append('set_point', document.getElementById('ai_set_point').value);
-  form_data.append('reset_point', document.getElementById('ai_reset_point').value);
+  var setPoint = parseFloat(document.getElementById('ai_set_point').value);
+  var resetPoint = parseFloat(document.getElementById('ai_reset_point').value);
+  var status_el = document.getElementById('ai_status');
+  if (alarmType === 0 && setPoint <= resetPoint) {
+    status_el.textContent = 'Error: For High Alarm, Set Point must be greater than Reset Point.';
+    status_el.style.color = 'red';
+    status_el.style.display = 'block';
+    return;
+  }
+  if (alarmType === 1 && setPoint >= resetPoint) {
+    status_el.textContent = 'Error: For Low Alarm, Set Point must be less than Reset Point.';
+    status_el.style.color = 'red';
+    status_el.style.display = 'block';
+    return;
+  }
+  if ((alarmType === 2 || alarmType === 3) && setPoint >= resetPoint) {
+    status_el.textContent = 'Error: Reset Point (upper band) must be greater than Set Point (lower band).';
+    status_el.style.color = 'red';
+    status_el.style.display = 'block';
+    return;
+  }
+  form_data.append('set_point', setPoint);
+  form_data.append('reset_point', resetPoint);
   form_data.append('tta_ms', document.getElementById('ai_tta').value);
   form_data.append('ttr_ms', document.getElementById('ai_ttr').value);
   form_data.append('alarm_sms_enabled', document.getElementById('ai_alarm_sms').checked ? '1' : '0');

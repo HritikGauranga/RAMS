@@ -13,6 +13,8 @@ static bool simMissingLatched = false;
 static unsigned long lastSimRecheckMs = 0;
 static unsigned long lastSmsCheckMs = 0;
 static volatile bool modemSerialBusy = false;
+static volatile int8_t cachedRssi = -1;
+static unsigned long lastRssiUpdateMs = 0;
 
 
 // ---------------------------------------------------------------------------
@@ -892,38 +894,31 @@ static bool takeNextPendingReturnSlot(size_t &slotIndex) {
 }
 
 // ---------------------------------------------------------------------------
-// Modem_getSignalStrength
+// Modem_getSignalStrength — returns cached RSSI, updated by modem task
 // ---------------------------------------------------------------------------
-// Returns signal strength 0-31 (where 0=very weak, 31=excellent), -1 on error, -2 if SIM not inserted
 int8_t Modem_getSignalStrength() {
   if (simMissingLatched) return -2;
   if (!modemReady) return -1;
-  if (modemSerialBusy) return -1;
+  return cachedRssi;
+}
+
+static void updateCachedRssi() {
+  if (!modemReady || modemSerialBusy) return;
+  unsigned long now = millis();
+  if (now - lastRssiUpdateMs < 30000) return; // update every 30s
+  lastRssiUpdateMs = now;
 
   String response = sendAT("AT+CSQ", 2000, true);
-  
-  if (response.indexOf("+CSQ:") == -1) {
-    Serial.println("[MODEM] No CSQ response from modem");
-    return -1;
-  }
+  if (response.indexOf("+CSQ:") == -1) return;
 
   int colonIdx = response.indexOf(':');
-  if (colonIdx < 0) return -1;
-
-  // Find first number after ':'
   int commaIdx = response.indexOf(',', colonIdx);
-  if (commaIdx < 0) return -1;
+  if (colonIdx < 0 || commaIdx < 0) return;
 
   String rssiStr = response.substring(colonIdx + 1, commaIdx);
   rssiStr.trim();
-
   int rssi = rssiStr.toInt();
-  if (rssi < 0 || rssi > 31) {
-    Serial.printf("[MODEM] Invalid RSSI value: %d\n", rssi);
-    return -1;
-  }
-
-  return (int8_t)rssi;
+  if (rssi >= 0 && rssi <= 31) cachedRssi = (int8_t)rssi;
 }
 
 void Modem_task(void *pvParameters) {
@@ -990,6 +985,7 @@ void Modem_task(void *pvParameters) {
     }
 
     checkPulses();
+    updateCachedRssi();
 
     vTaskDelay(pdMS_TO_TICKS(25));
   }

@@ -704,6 +704,49 @@ bool Modem_init() {
 }
 
 // ---------------------------------------------------------------------------
+// buildAlarmSMS / buildReturnSMS - structured SMS formatters
+// ---------------------------------------------------------------------------
+static String buildSMSHeader() {
+  String siteName = readSystemConfigValue("site_name", "Not Set");
+  String location = readSystemConfigValue("site_address", "");
+  String site = siteName;
+  if (location.length() > 0) site += " " + location;
+  return "Site:" + site;
+}
+
+static String buildAlarmSMS(const DigitalInputConfig &cfg) {
+  // NC: alarm = input opened -> LOW. NO: alarm = input closed -> HIGH.
+  String value = cfg.normallyClosed ? "LOW" : "HIGH";
+  String type  = cfg.normallyClosed ? "NC" : "NO";
+  String state = String(cfg.alarm_message);
+  if (state.length() == 0) state = String(cfg.name) + " ALARM";
+
+  String msg = "[ALARM]\n";
+  msg += buildSMSHeader() + "\n";
+  msg += "Input: " + String(cfg.name) + "\n";
+  msg += "Type:" + type + "\n";
+  msg += "Value: " + value + "\n";
+  msg += "State: " + state;
+  return msg;
+}
+
+static String buildReturnSMS(const DigitalInputConfig &cfg) {
+  // NC: return = input closed -> HIGH. NO: return = input opened -> LOW.
+  String value = cfg.normallyClosed ? "HIGH" : "LOW";
+  String type  = cfg.normallyClosed ? "NC" : "NO";
+  String state = String(cfg.return_message);
+  if (state.length() == 0) state = String(cfg.name) + " RETURN TO NORMAL";
+
+  String msg = "[RETURN]\n";
+  msg += buildSMSHeader() + "\n";
+  msg += "Input: " + String(cfg.name) + "\n";
+  msg += "Type:" + type + "\n";
+  msg += "Value: " + value + "\n";
+  msg += "State: " + state;
+  return msg;
+}
+
+// ---------------------------------------------------------------------------
 // dispatchMessage - sends SMS using DI config (message + selected_contacts)
 // ---------------------------------------------------------------------------
 static int16_t dispatchMessage(size_t inputIndex) {
@@ -714,8 +757,7 @@ static int16_t dispatchMessage(size_t inputIndex) {
   DigitalInputConfig diCfg = {};
   Shared_getDigitalInputConfig(inputIndex, diCfg);
 
-  String msg = String(diCfg.alarm_message);
-  if (msg.length() == 0) msg = String(diCfg.name) + " ALARM";
+  String msg = buildAlarmSMS(diCfg);
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   uint8_t sentCount = 0;
@@ -759,8 +801,7 @@ static int16_t dispatchReturnMessage(size_t inputIndex) {
 
   if (!diCfg.return_sms_enabled) return STATUS_IDLE;
 
-  String msg = String(diCfg.return_message);
-  if (msg.length() == 0) msg = String(diCfg.name) + " RETURN TO NORMAL";
+  String msg = buildReturnSMS(diCfg);
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   uint8_t sentCount = 0;

@@ -968,6 +968,7 @@ static void setupWebServerRoutes() {
       body += "\"index\":" + String(i) + ",";
       body += "\"name\":\"" + escapeJson(String(di.name)) + "\",";
       body += "\"value\":" + String(snapshot.digitalInputs[i]) + ",";
+      body += "\"normally_closed\":" + String(di.normallyClosed ? "true" : "false") + ",";
       body += "\"enabled\":" + String(di.enabled ? "true" : "false");
       body += "}";
     }
@@ -1554,7 +1555,7 @@ static const char *htmlPage() {
                 <tr>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Input</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
-                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value (Type)</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
@@ -2310,7 +2311,9 @@ function loadDashboard(){
         io.digital_inputs.forEach(function(di, idx) {
           var status = di.value === 0 ? 'Normal' : 'Alarm';
           var badge = di.value === 0 ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.value) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
+          var type = di.normally_closed ? 'NC' : 'NO';
+          var diValDisplay = (di.value === 0 ? 'LOW' : 'HIGH') + '(' + type + ')';
+          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + diValDisplay + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
         });
       }
       document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';

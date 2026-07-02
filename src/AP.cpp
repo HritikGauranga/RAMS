@@ -2020,7 +2020,7 @@ static const char *htmlPage() {
 
       <div id="network" class="tab" style="display:none">
         <div class="panel">
-          <div class="form-section">
+          <div class="form-section" style="margin-top:0">
             <h3>Connection Mode</h3>
             <div class="field full">
               <div class="row">
@@ -2092,7 +2092,7 @@ static const char *htmlPage() {
       </div>
       <div id="sysconfig" class="tab" style="display:none">
         <div class="panel">
-          <div class="form-section">
+          <div class="form-section" style="margin-top:0">
             <h3>Site Details</h3>
             <div class="form-grid">
               <div class="field">

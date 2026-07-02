@@ -408,6 +408,10 @@ static void processRelayCommand(const String &sender, const String &body) {
     Serial.println("[SMS] Relay disabled: " + relayName);
     return;
   }
+  if (!cfg.sms_control_enabled) {
+    Serial.println("[SMS] SMS control disabled for relay: " + relayName);
+    return;
+  }
 
   bool isOn = state.equalsIgnoreCase("on");
   bool isOff = state.equalsIgnoreCase("off");

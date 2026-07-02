@@ -58,6 +58,7 @@ struct DigitalInputState {
 static AnalogInputState aiState[ANALOG_INPUT_COUNT] = {};
 static DigitalInputState diState[DIGITAL_INPUT_COUNT] = {};
 static bool relayOutputs[RELAY_OUTPUT_COUNT] = {false, false};
+static bool relayAlarmHeld[RELAY_OUTPUT_COUNT] = {false, false}; // true = relay ON due to active alarm
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -99,17 +100,17 @@ static float readAnalogAveraged(size_t index) {
 
 // Check if analog value triggers alarm based on alarm type
 static bool checkAnalogAlarm(float value, const AnalogInputConfig &cfg) {
+  float lo = (cfg.set_point < cfg.reset_point) ? cfg.set_point : cfg.reset_point;
+  float hi = (cfg.set_point < cfg.reset_point) ? cfg.reset_point : cfg.set_point;
   switch (cfg.alarm_type) {
     case 0:  // High alarm
       return value >= cfg.set_point;
     case 1:  // Low alarm
       return value <= cfg.set_point;
     case 2:  // In-Band alarm (alarm if value is BETWEEN set_point and reset_point)
-      return (value >= cfg.set_point && value <= cfg.reset_point) ||
-             (value >= cfg.reset_point && value <= cfg.set_point);
+      return (value >= lo && value <= hi);
     case 3:  // Out-of-Band alarm (alarm if value is OUTSIDE set_point and reset_point)
-      return (value < cfg.set_point && value < cfg.reset_point) ||
-             (value > cfg.set_point && value > cfg.reset_point);
+      return (value < lo || value > hi);
     default:
       return false;
   }
@@ -117,17 +118,17 @@ static bool checkAnalogAlarm(float value, const AnalogInputConfig &cfg) {
 
 // Check if analog value triggers return (alarm clear) based on alarm type
 static bool checkAnalogReturn(float value, const AnalogInputConfig &cfg) {
+  float lo = (cfg.set_point < cfg.reset_point) ? cfg.set_point : cfg.reset_point;
+  float hi = (cfg.set_point < cfg.reset_point) ? cfg.reset_point : cfg.set_point;
   switch (cfg.alarm_type) {
     case 0:  // High alarm - return when below reset point
       return value < cfg.reset_point;
     case 1:  // Low alarm - return when above reset point
       return value > cfg.reset_point;
     case 2:  // In-Band alarm - return when outside the band
-      return !((value >= cfg.set_point && value <= cfg.reset_point) ||
-               (value >= cfg.reset_point && value <= cfg.set_point));
+      return (value < lo || value > hi);
     case 3:  // Out-of-Band alarm - return when inside the band
-      return (value >= cfg.set_point && value <= cfg.reset_point) ||
-             (value >= cfg.reset_point && value <= cfg.set_point);
+      return (value >= lo && value <= hi);
     default:
       return true;
   }
@@ -197,6 +198,7 @@ static void processAnalogInput(size_t index) {
             // Check if this relay is linked to this AI (alarm_source: 1=AI1, 2=AI2)
             if (rcfg.alarm_source == (index + 1)) {
               Shared_setRelayState(r, true);
+              relayAlarmHeld[r] = true;
               Serial.printf("[AI%d] Activating Relay%d due to alarm\n", index + 1, r + 1);
             }
           }
@@ -235,6 +237,7 @@ static void processAnalogInput(size_t index) {
             if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
               if (rcfg.alarm_source == (index + 1)) {
                 Shared_setRelayState(r, false);
+                relayAlarmHeld[r] = false;
                 Serial.printf("[AI%d] Deactivating Relay%d - alarm cleared\n", index + 1, r + 1);
               }
             }
@@ -315,6 +318,7 @@ static void processDigitalInput(size_t index) {
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
             if (rcfg.alarm_source == (index + 3)) {
               Shared_setRelayState(r, true);
+              relayAlarmHeld[r] = true;
               Serial.printf("[DI%d] Activating Relay%d due to alarm\n", index + 1, r + 1);
             }
           }
@@ -348,6 +352,7 @@ static void processDigitalInput(size_t index) {
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
             if (rcfg.alarm_source == (index + 3)) {
               Shared_setRelayState(r, false);
+              relayAlarmHeld[r] = false;
               Serial.printf("[DI%d] Deactivating Relay%d - alarm cleared\n", index + 1, r + 1);
             }
           }
@@ -360,13 +365,33 @@ static void processDigitalInput(size_t index) {
 // Update physical relay outputs
 static void updateRelayOutputs() {
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+    RelayConfig rcfg = {};
+    Shared_getRelayConfig(i, rcfg);
+
+    // If output is disabled, force OFF regardless of shared state
+    if (!rcfg.enabled) {
+      if (relayOutputs[i]) {
+        relayOutputs[i] = false;
+        relayAlarmHeld[i] = false;
+        Shared_setRelayState(i, false);
+        digitalWrite(DO_PIN[i], HIGH); // Active LOW: HIGH = OFF
+        Serial.printf("[DO%d] Forced OFF - output disabled\n", i + 1);
+      }
+      continue;
+    }
+
+    // If alarm control was turned off while relay was held ON by alarm, release it
+    if (relayAlarmHeld[i] && !rcfg.alarm_control_enabled) {
+      relayAlarmHeld[i] = false;
+      Shared_setRelayState(i, false);
+      Serial.printf("[DO%d] Released - alarm control disabled\n", i + 1);
+    }
+
     SystemSnapshot snap = Shared_getSnapshot();
     bool desiredState = snap.relayState[i];
-    
     if (relayOutputs[i] != desiredState) {
       relayOutputs[i] = desiredState;
-      // Active LOW LEDs: LOW = ON, HIGH = OFF
-      digitalWrite(DO_PIN[i], desiredState ? LOW : HIGH);
+      digitalWrite(DO_PIN[i], desiredState ? LOW : HIGH); // Active LOW
       Serial.printf("[DO%d] Output set to %s (GPIO=%s)\n", i + 1, desiredState ? "ON" : "OFF", desiredState ? "LOW" : "HIGH");
     }
   }

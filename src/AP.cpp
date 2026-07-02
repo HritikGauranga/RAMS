@@ -1955,7 +1955,7 @@ static const char *htmlPage() {
                   </div>
                   <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Allows remote control: DO1 ON, DO1 OFF, DO1 PULSE 30</div>
                   <div style="display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="do_alarm_control" style="width:18px;height:18px;cursor:pointer">
+                    <input type="checkbox" id="do_alarm_control" onchange="updateDOFieldsState()" style="width:18px;height:18px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Alarm Control</label>
                   </div>
                   <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Output activates automatically when linked alarm triggers</div>
@@ -1969,14 +1969,12 @@ static const char *htmlPage() {
                   <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm Source</label>
                   <select id="do_alarm_source" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;cursor:pointer">
                     <option value="0">None (Manual / SMS only)</option>
-                    <option value="1">AI1 - High Level Alarm</option>
-                    <option value="2">AI1 - Low Level Alarm</option>
-                    <option value="3">AI2 - High Level Alarm</option>
-                    <option value="4">AI2 - Low Level Alarm</option>
-                    <option value="5">DI1 - Digital Alarm</option>
-                    <option value="6">DI2 - Digital Alarm</option>
-                    <option value="7">DI3 - Digital Alarm</option>
-                    <option value="8">DI4 - Digital Alarm</option>
+                    <option value="1">AI1 - Analog Alarm</option>
+                    <option value="2">AI2 - Analog Alarm</option>
+                    <option value="3">DI1 - Digital Alarm</option>
+                    <option value="4">DI2 - Digital Alarm</option>
+                    <option value="5">DI3 - Digital Alarm</option>
+                    <option value="6">DI4 - Digital Alarm</option>
                   </select>
                   <div style="font-size:11px;color:#999;margin-top:4px">Select alarm to link (if Alarm Control enabled)</div>
                 </div>
@@ -2516,15 +2514,16 @@ function loadRecipients(){
 
 function refreshRecipientSelections(){
   if (di_configs && di_configs.length > 0 && typeof switchDI === 'function') {
-    var diIndex = parseInt(window.current_di_index || (document.getElementById('di_selector') || {}).value || 0);
+    var diIndex = parseInt(window.current_di_index !== undefined ? window.current_di_index : ((document.getElementById('di_selector') || {}).value || 0));
     if (diIndex >= 0 && diIndex < di_configs.length) switchDI(diIndex);
   }
   if (ai_configs && ai_configs.length > 0 && typeof switchAI === 'function') {
-    var aiIndex = parseInt(window.current_ai_index || (document.getElementById('ai_selector') || {}).value || 0);
+    var aiIndex = parseInt(window.current_ai_index !== undefined ? window.current_ai_index : ((document.getElementById('ai_selector') || {}).value || 0));
     if (aiIndex >= 0 && aiIndex < ai_configs.length) switchAI(aiIndex);
   }
+  // DO recipients are refreshed by loadDOConfig chaining; only refresh here if do_configs already loaded
   if (do_configs && do_configs.length > 0 && typeof switchDO === 'function') {
-    var doIndex = parseInt(window.current_do_index || (document.getElementById('do_selector') || {}).value || 0);
+    var doIndex = parseInt(window.current_do_index !== undefined ? window.current_do_index : ((document.getElementById('do_selector') || {}).value || 0));
     if (doIndex >= 0 && doIndex < do_configs.length) switchDO(doIndex);
   }
 }
@@ -2755,17 +2754,13 @@ function loadDOConfig(){
     return r.json();
   }).then(d=>{
     do_configs = d;
+    return loadRecipients();
+  }).then(function(){
     var saved_idx = parseInt(localStorage.getItem('selectedDOIndex'), 10);
-    if (isNaN(saved_idx)) saved_idx = 0;
-    if(saved_idx >= 0 && saved_idx < d.length) {
-      switchDO(saved_idx);
-      document.getElementById('do_selector').value = saved_idx;
-    } else {
-      switchDO(0);
-      document.getElementById('do_selector').value = 0;
-    }
-
-  }).catch(e=>{
+    if (isNaN(saved_idx) || saved_idx < 0 || saved_idx >= do_configs.length) saved_idx = 0;
+    document.getElementById('do_selector').value = saved_idx;
+    switchDO(saved_idx);
+  }).catch(function(e){
     if(e === 'auth') return;
     console.error('Error loading DO config:', e);
   });
@@ -2809,8 +2804,11 @@ if (relay_sel) {
 
 function updateDOFieldsState(){
   var enabled = document.getElementById('do_enabled').checked;
-  var fields = ['do_name','do_powerup','do_sms_control','do_alarm_control','do_alarm_source'];
+  var alarmCtrl = enabled && document.getElementById('do_alarm_control').checked;
+  var fields = ['do_name','do_powerup','do_sms_control','do_alarm_control'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
+  var alarmSrcEl = document.getElementById('do_alarm_source');
+  if (alarmSrcEl) alarmSrcEl.disabled = !alarmCtrl;
   var relay_sel = document.getElementById('relay_recipients_select');
   if (relay_sel) eachNode(relay_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
 }
@@ -2825,28 +2823,19 @@ function saveDOConfig(){
   form_data.append('sms_control_enabled', document.getElementById('do_sms_control').checked ? '1' : '0');
   form_data.append('alarm_control_enabled', document.getElementById('do_alarm_control').checked ? '1' : '0');
   form_data.append('alarm_source', document.getElementById('do_alarm_source').value);
-  
-  // Encode selected recipients into bitmask
   var relay_sel = document.getElementById('relay_recipients_select');
-var selectedIndices = [];
-
-if (relay_sel) {
-
-  eachNode(relay_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
-
-    selectedIndices.push(cb.value);
-
-  });
-
-}
-
-var bitmask = encodeBitmask(selectedIndices);
-form_data.append('selected_contacts', bitmask);
-  
+  var selectedIndices = [];
+  if (relay_sel) {
+    eachNode(relay_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
+      selectedIndices.push(cb.value);
+    });
+  }
+  var bitmask = encodeBitmask(selectedIndices);
+  form_data.append('selected_contacts', bitmask);
   var status_el = document.getElementById('do_status');
   fetch('/api/relay-config', { method:'POST', body:form_data })
-    .then(r=>r.json())
-    .then(d=>{
+    .then(function(r){ return r.json(); })
+    .then(function(d){
       if(d.success) {
         do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),default_power_up_state:form_data.get('default_power_up_state')==='1',sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:bitmask};
         status_el.textContent = 'DO' + (index+1) + ' configuration saved successfully!';
@@ -2858,7 +2847,7 @@ form_data.append('selected_contacts', bitmask);
       status_el.style.display = 'block';
       setTimeout(function(){ status_el.style.display = 'none'; }, 4000);
     })
-    .catch(e=>{
+    .catch(function(e){
       status_el.textContent = 'Error: ' + e.message;
       status_el.style.color = 'red';
       status_el.style.display = 'block';

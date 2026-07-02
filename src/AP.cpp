@@ -1607,7 +1607,6 @@ static const char *htmlPage() {
       <div id="digital" class="tab" style="display:none">
         <div class="panel">
           <h2>Digital Input Configuration</h2>
-          <div id="di_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -1713,6 +1712,7 @@ static const char *htmlPage() {
               </div>
               
               <!-- Action Button -->
+              <div id="di_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
               <div style="display:flex;gap:10px;margin-top:28px">
                 <button type="button" class="btn primary" onclick="saveDIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
               </div>
@@ -1724,7 +1724,6 @@ static const char *htmlPage() {
       <div id="analog" class="tab" style="display:none">
         <div class="panel">
           <h2>Analog Input Configuration</h2>
-          <div id="ai_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -1901,6 +1900,7 @@ static const char *htmlPage() {
               </div>
               
               <!-- Action Button -->
+              <div id="ai_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
               <div style="display:flex;gap:10px;margin-top:28px">
                 <button type="button" class="btn primary" onclick="saveAIConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Configuration</button>
               </div>
@@ -1912,7 +1912,6 @@ static const char *htmlPage() {
       <div id="relays" class="tab" style="display:none">
         <div class="panel">
           <h2>Digital Output Configuration</h2>
-          <div id="do_status" style="display:none;margin-bottom:16px;padding:12px;border-radius:4px;border-left:4px solid green"></div>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -1998,6 +1997,7 @@ static const char *htmlPage() {
               </div>
               
               <!-- Save Button -->
+              <div id="do_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
               <div style="margin-top:24px;display:flex;gap:12px">
                 <button type="button" onclick="saveDOConfig()" style="flex:1;padding:12px;background:#0066cc;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-size:14px">Save Configuration</button>
               </div>
@@ -2009,7 +2009,6 @@ static const char *htmlPage() {
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
           <h2>Contact Configuration</h2>
-          <div id="phones_status" style="display:none;margin-bottom:12px"></div>
           <div class="subtitle">Manage contacts for SMS event notifications and relay control. Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
 
           <h3>Event Recipients</h3>
@@ -2017,6 +2016,7 @@ static const char *htmlPage() {
           <button class="btn" onclick="addRecContact()">Add Recipient</button>
 
           <div style="margin-top:10px">
+            <div id="phones_status" style="display:none;margin-bottom:12px"></div>
             <button class="btn primary" onclick="saveContacts()">Save Contacts</button>
           </div>
         </div>
@@ -2054,6 +2054,7 @@ static const char *htmlPage() {
               </div>
             </div>
             <div class="form-actions">
+              <div id="net_status" style="display:none;margin-bottom:12px"></div>
               <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
             </div>
             <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
@@ -2061,7 +2062,6 @@ static const char *htmlPage() {
 
           <div class="form-section">
             <h3>SIM Configuration</h3>
-            <div id="sim_status" style="display:none;margin-bottom:12px"></div>
             <div class="form-grid">
               <div class="field">
                 <label>Service Provider</label>
@@ -2091,6 +2091,7 @@ static const char *htmlPage() {
                 </div>
             </div>
             <div class="form-actions">
+              <div id="sim_status" style="display:none;margin-bottom:12px"></div>
               <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
             </div>
           </div>
@@ -2099,7 +2100,6 @@ static const char *htmlPage() {
       <div id="sysconfig" class="tab" style="display:none">
         <div class="panel">
           <h2>System Configuration</h2>
-          <div id="sys_status" style="display:none;margin-bottom:12px"></div>
 
           <div class="form-section">
             <h3>Site Details</h3>
@@ -2122,6 +2122,7 @@ static const char *htmlPage() {
                 </div>
             </div>
             <div class="form-actions">
+              <div id="sys_status" style="display:none;margin-bottom:12px"></div>
               <button class="btn primary" onclick="saveSystemConfig()">Save Site Details</button>
             </div>
           </div>

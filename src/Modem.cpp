@@ -714,7 +714,7 @@ bool Modem_init() {
 // ---------------------------------------------------------------------------
 static String buildSMSHeader() {
   String siteName = readSystemConfigValue("site_name", "Not Set");
-  return "Site:" + siteName;
+  return "Site: " + siteName;
 }
 
 static String alarmTypeName(uint8_t t) {
@@ -733,7 +733,7 @@ static String buildAnalogAlarmSMS(const AnalogInputConfig &cfg, float value) {
   String msg = "[ALARM]\n";
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
-  msg += "Type:" + alarmTypeName(cfg.alarm_type) + "\n";
+  msg += "Type: " + alarmTypeName(cfg.alarm_type) + "\n";
   msg += "Value: " + String(value, 2) + " " + String(cfg.engineering_unit) + "\n";
   msg += "State: " + state;
   return msg;
@@ -745,7 +745,7 @@ static String buildAnalogReturnSMS(const AnalogInputConfig &cfg, float value) {
   String msg = "[RETURN]\n";
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
-  msg += "Type:" + alarmTypeName(cfg.alarm_type) + "\n";
+  msg += "Type: " + alarmTypeName(cfg.alarm_type) + "\n";
   msg += "Value: " + String(value, 2) + " " + String(cfg.engineering_unit) + "\n";
   msg += "State: " + state;
   return msg;
@@ -789,7 +789,7 @@ static String buildAlarmSMS(const DigitalInputConfig &cfg) {
   String msg = "[ALARM]\n";
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
-  msg += "Type:" + type + "\n";
+  msg += "Type: " + type + "\n";
   msg += "Value: " + value + "\n";
   msg += "State: " + state;
   return msg;
@@ -805,7 +805,7 @@ static String buildReturnSMS(const DigitalInputConfig &cfg) {
   String msg = "[RETURN]\n";
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
-  msg += "Type:" + type + "\n";
+  msg += "Type: " + type + "\n";
   msg += "Value: " + value + "\n";
   msg += "State: " + state;
   return msg;

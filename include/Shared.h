@@ -144,6 +144,10 @@ bool Shared_saveRecipientContacts(const ContactList &list);
 // Alarm result storage (per-input)
 bool Shared_writeAlarmResult(size_t index, int16_t value);
 
+// AI alarm state (set by IOScanner, read by AP for dashboard)
+bool Shared_setAIAlarmState(size_t index, bool inAlarm);
+bool Shared_getAIAlarmState(size_t index, bool &out);
+
 // AI pending SMS queue (posted by IOScanner, consumed by Modem task)
 struct AIPendingSMS {
   size_t  index;

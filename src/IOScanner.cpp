@@ -181,6 +181,7 @@ static void processAnalogInput(size_t index) {
         state.returnTriggerTime = 0;
         Serial.printf("[AI%d] ALARM TRIGGERED: %.2f %s\n", 
                       index + 1, engValue, cfg.engineering_unit);
+        Shared_setAIAlarmState(index, true);
         
         // Send alarm SMS
         if (!state.alarmSmsSent) {
@@ -224,6 +225,7 @@ static void processAnalogInput(size_t index) {
           state.alarmSmsSent = false;
           Serial.printf("[AI%d] ALARM CLEARED: %.2f %s\n", 
                         index + 1, engValue, cfg.engineering_unit);
+          Shared_setAIAlarmState(index, false);
           
           // Send return SMS
           sendAnalogAlarmSMS(index, cfg, engValue, false);

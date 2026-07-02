@@ -88,6 +88,7 @@ static GatewaySettings gatewaySettings = {
 };
 
 static int16_t alarmResults[DIGITAL_INPUT_COUNT] = {0};
+static bool    aiAlarmState[ANALOG_INPUT_COUNT]  = {false, false};
 static int16_t inputRegsCompat[4] = {
   (int16_t)STATE_READY,
   (int16_t)STATE_IDLE,
@@ -651,6 +652,22 @@ bool Shared_writeAlarmResult(size_t index, int16_t value) {
   if (index >= DIGITAL_INPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
   alarmResults[index] = value;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_setAIAlarmState(size_t index, bool inAlarm) {
+  if (index >= ANALOG_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  aiAlarmState[index] = inAlarm;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_getAIAlarmState(size_t index, bool &out) {
+  if (index >= ANALOG_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  out = aiAlarmState[index];
   Shared_unlockState();
   return true;
 }

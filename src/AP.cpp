@@ -980,11 +980,14 @@ static void setupWebServerRoutes() {
       if (i) body += ",";
       AnalogInputConfig ai = {};
       Shared_getAnalogInputConfig(i, ai);
+      bool aiAlarm = false;
+      Shared_getAIAlarmState(i, aiAlarm);
       body += "{";
       body += "\"index\":" + String(i) + ",";
       body += "\"name\":\"" + escapeJson(String(ai.name)) + "\",";
       body += "\"value\":" + String(snapshot.analogInputs[i], 2) + ",";
-      body += "\"enabled\":" + String(ai.enabled ? "true" : "false");
+      body += "\"enabled\":" + String(ai.enabled ? "true" : "false") + ",";
+      body += "\"in_alarm\":" + String(aiAlarm ? "true" : "false");
       body += "}";
     }
     body += "],";
@@ -999,7 +1002,9 @@ static void setupWebServerRoutes() {
       body += "\"index\":" + String(i) + ",";
       body += "\"name\":\"" + escapeJson(String(relay.name)) + "\",";
       body += "\"state\":" + String(snapshot.relayState[i] ? "true" : "false") + ",";
-      body += "\"enabled\":" + String(relay.enabled ? "true" : "false");
+      body += "\"enabled\":" + String(relay.enabled ? "true" : "false") + ",";
+      body += "\"alarm_control_enabled\":" + String(relay.alarm_control_enabled ? "true" : "false") + ",";
+      body += "\"alarm_source\":" + String((int)relay.alarm_source);
       body += "}";
     }
     body += "]";
@@ -1592,7 +1597,7 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Output</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">State</th>
-                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
+                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Alarm Link</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
@@ -2313,7 +2318,9 @@ function loadDashboard(){
       if(io.analog_inputs && io.analog_inputs.length > 0) {
         io.analog_inputs.forEach(function(ai, idx) {
           var aiValue = Number(ai.value);
-          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Active</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
+          var inAlarm = !!ai.in_alarm;
+          var aiStatusBadge = inAlarm ? '<span style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Alarm</span>' : '<span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Normal</span>';
+          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + aiStatusBadge + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
         });
       }
       document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
@@ -2324,7 +2331,10 @@ function loadDashboard(){
         io.relay_outputs.forEach(function(relay, idx) {
           var state = relay.state ? 'ON' : 'OFF';
           var badge = relay.state ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (relay.enabled ? 'Ready' : 'Inactive') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
+          var alarmSrcLabels = ['None','AI1','AI2','DI1','DI2','DI3','DI4'];
+          var src = relay.alarm_source || 0;
+          var linkText = (relay.alarm_control_enabled && src > 0) ? (alarmSrcLabels[src] || 'None') : 'None';
+          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(linkText) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
         });
       }
       document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';

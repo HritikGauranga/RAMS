@@ -1606,7 +1606,6 @@ static const char *htmlPage() {
 
       <div id="digital" class="tab" style="display:none">
         <div class="panel">
-          <h2>Digital Input Configuration</h2>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -1723,7 +1722,6 @@ static const char *htmlPage() {
       </div>
       <div id="analog" class="tab" style="display:none">
         <div class="panel">
-          <h2>Analog Input Configuration</h2>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -1911,7 +1909,6 @@ static const char *htmlPage() {
       </div>
       <div id="relays" class="tab" style="display:none">
         <div class="panel">
-          <h2>Digital Output Configuration</h2>
           
           <!-- Selector Section -->
           <div style="margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:30px">
@@ -2008,7 +2005,6 @@ static const char *htmlPage() {
       <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
-          <h2>Contact Configuration</h2>
           <div class="subtitle">Manage contacts for SMS event notifications and relay control. Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
 
           <h3>Event Recipients</h3>
@@ -2024,9 +2020,6 @@ static const char *htmlPage() {
 
       <div id="network" class="tab" style="display:none">
         <div class="panel">
-          <h2>Network Configuration</h2>
-          <div id="net_status" style="display:none;margin-bottom:12px"></div>
-
           <div class="form-section">
             <h3>Connection Mode</h3>
             <div class="field full">
@@ -2099,8 +2092,6 @@ static const char *htmlPage() {
       </div>
       <div id="sysconfig" class="tab" style="display:none">
         <div class="panel">
-          <h2>System Configuration</h2>
-
           <div class="form-section">
             <h3>Site Details</h3>
             <div class="form-grid">
@@ -2136,12 +2127,12 @@ static const char *htmlPage() {
 <script>
 var tabLabels = {
   'dashboard': { title: 'Dashboard', subtitle: 'System Overview & Status' },
-  'digital': { title: 'DI Config'},
-  'analog': { title: 'AI Config'},
-  'relays': { title: 'DO Config'},
-  'phones': { title: 'Contact Config'},
-  'network': { title: 'Network Config'},
-  'sysconfig': { title: 'System Config'},
+  'digital': { title: 'Digital Input Configuration'},
+  'analog': { title: 'Analog Input Configuration'},
+  'relays': { title: 'Digital Output Configuration', subtitle: 'Relay Output' },
+  'phones': { title: 'Contact Configuration'},
+  'network': { title: 'Network Configuration'},
+  'sysconfig': { title: 'System Configuration'},
 };
 
 function eachNode(nodes, fn) {

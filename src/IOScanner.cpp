@@ -133,89 +133,14 @@ static bool checkAnalogReturn(float value, const AnalogInputConfig &cfg) {
   }
 }
 
-// Send alarm SMS for analog input
+// Post AI alarm/return SMS to Modem task queue
 static void sendAnalogAlarmSMS(size_t index, const AnalogInputConfig &cfg, float value, bool isAlarm) {
   if (!cfg.enabled) return;
   if (isAlarm && !cfg.alarm_sms_enabled) return;
   if (!isAlarm && !cfg.return_sms_enabled) return;
-  
-  // Get recipient contacts
-  ContactList contacts = {};
-  Shared_getRecipientContacts(contacts);
-  
-  // Build message
-  String message = isAlarm ? String(cfg.alarm_message) : String(cfg.return_message);
-  String name = String(cfg.name);
-  String unit = String(cfg.engineering_unit);
-  
-  // Replace placeholders if message is default or empty
-  if (message.length() == 0) {
-    if (isAlarm) {
-      message = name + " ALARM: " + String(value, 2) + " " + unit;
-    } else {
-      message = name + " RETURN: " + String(value, 2) + " " + unit;
-    }
-  }
-  
-  // Send to selected contacts
-  for (size_t i = 0; i < contacts.count; ++i) {
-    if (!contacts.items[i].enabled) continue;
-    
-    // Check if this contact is selected (bitmask)
-    if (cfg.selected_contacts & (1 << i)) {
-      String number = String(contacts.items[i].number);
-      number.trim();
-      if (number.length() > 0) {
-        Serial.printf("[AI%d] Sending %s SMS to %s: %s\n", 
-                      index + 1, isAlarm ? "ALARM" : "RETURN", 
-                      number.c_str(), message.c_str());
-        // Note: SMS sending will happen via Modem task queue (to be implemented)
-        // For now, just log it
-      }
-    }
-  }
-}
-
-// Send alarm SMS for digital input
-static void sendDigitalAlarmSMS(size_t index, const DigitalInputConfig &cfg, bool isAlarm) {
-  if (!cfg.enabled) return;
-  if (isAlarm && !cfg.alarm_sms_enabled) return;
-  if (!isAlarm && !cfg.return_sms_enabled) return;
-  
-  // Get recipient contacts
-  ContactList contacts = {};
-  Shared_getRecipientContacts(contacts);
-  
-  // Build message
-  String message = isAlarm ? String(cfg.alarm_message) : String(cfg.return_message);
-  String name = String(cfg.name);
-  
-  // Replace placeholders if message is default or empty
-  if (message.length() == 0) {
-    if (isAlarm) {
-      message = name + " ALARM";
-    } else {
-      message = name + " RETURN TO NORMAL";
-    }
-  }
-  
-  // Send to selected contacts
-  for (size_t i = 0; i < contacts.count; ++i) {
-    if (!contacts.items[i].enabled) continue;
-    
-    // Check if this contact is selected (bitmask)
-    if (cfg.selected_contacts & (1 << i)) {
-      String number = String(contacts.items[i].number);
-      number.trim();
-      if (number.length() > 0) {
-        Serial.printf("[DI%d] Sending %s SMS to %s: %s\n", 
-                      index + 1, isAlarm ? "ALARM" : "RETURN", 
-                      number.c_str(), message.c_str());
-        // Note: SMS sending will happen via Modem task queue (to be implemented)
-        // For now, just log it
-      }
-    }
-  }
+  Shared_postAIPendingSMS(index, isAlarm, value);
+  Serial.printf("[AI%d] %s SMS queued (value: %.2f %s)\n",
+                index + 1, isAlarm ? "ALARM" : "RETURN", value, cfg.engineering_unit);
 }
 
 // Process analog input
@@ -380,7 +305,6 @@ static void processDigitalInput(size_t index) {
         Shared_writeDigitalInput(index, 1);
 
         if (!state.alarmSmsSent) {
-          sendDigitalAlarmSMS(index, cfg, true);
           state.alarmSmsSent = true;
         }
 
@@ -415,7 +339,7 @@ static void processDigitalInput(size_t index) {
         // Write 0 only now — Modem task sees the falling edge here, after TTR
         Shared_writeDigitalInput(index, 0);
 
-        sendDigitalAlarmSMS(index, cfg, false);
+        // Return SMS handled by Modem task via pendingReturnSlots
 
         Shared_writeAlarmResult(index, STATUS_IDLE);
 

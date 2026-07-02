@@ -655,6 +655,33 @@ bool Shared_writeAlarmResult(size_t index, int16_t value) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// AI pending SMS queue
+// ---------------------------------------------------------------------------
+static AIPendingSMS aiPendingQueue[ANALOG_INPUT_COUNT] = {};
+
+bool Shared_postAIPendingSMS(size_t index, bool isAlarm, float value) {
+  if (index >= ANALOG_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  aiPendingQueue[index] = { index, isAlarm, value, true };
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_takeAIPendingSMS(AIPendingSMS &out) {
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
+    if (aiPendingQueue[i].valid) {
+      out = aiPendingQueue[i];
+      aiPendingQueue[i].valid = false;
+      Shared_unlockState();
+      return true;
+    }
+  }
+  Shared_unlockState();
+  return false;
+}
+
 bool Shared_writeInputRegister(size_t index, int16_t value) {
   if (index >= 4) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;

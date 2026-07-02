@@ -710,10 +710,69 @@ bool Modem_init() {
 // ---------------------------------------------------------------------------
 static String buildSMSHeader() {
   String siteName = readSystemConfigValue("site_name", "Not Set");
-  String location = readSystemConfigValue("site_address", "");
-  String site = siteName;
-  if (location.length() > 0) site += " " + location;
-  return "Site:" + site;
+  return "Site:" + siteName;
+}
+
+static String alarmTypeName(uint8_t t) {
+  switch (t) {
+    case 0: return "High";
+    case 1: return "Low";
+    case 2: return "In-Band";
+    case 3: return "Out-of-Band";
+    default: return "Unknown";
+  }
+}
+
+static String buildAnalogAlarmSMS(const AnalogInputConfig &cfg, float value) {
+  String state = String(cfg.alarm_message);
+  if (state.length() == 0) state = String(cfg.name) + " ALARM";
+  String msg = "[ALARM]\n";
+  msg += buildSMSHeader() + "\n";
+  msg += "Input: " + String(cfg.name) + "\n";
+  msg += "Type:" + alarmTypeName(cfg.alarm_type) + "\n";
+  msg += "Value: " + String(value, 2) + " " + String(cfg.engineering_unit) + "\n";
+  msg += "State: " + state;
+  return msg;
+}
+
+static String buildAnalogReturnSMS(const AnalogInputConfig &cfg, float value) {
+  String state = String(cfg.return_message);
+  if (state.length() == 0) state = String(cfg.name) + " RETURN TO NORMAL";
+  String msg = "[RETURN]\n";
+  msg += buildSMSHeader() + "\n";
+  msg += "Input: " + String(cfg.name) + "\n";
+  msg += "Type:" + alarmTypeName(cfg.alarm_type) + "\n";
+  msg += "Value: " + String(value, 2) + " " + String(cfg.engineering_unit) + "\n";
+  msg += "State: " + state;
+  return msg;
+}
+
+static void dispatchAISMS(const AIPendingSMS &pending) {
+  AnalogInputConfig cfg = {};
+  if (!Shared_getAnalogInputConfig(pending.index, cfg)) return;
+  if (!cfg.enabled) return;
+
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec) || rec.count == 0) return;
+
+  String msg = pending.isAlarm ? buildAnalogAlarmSMS(cfg, pending.value)
+                               : buildAnalogReturnSMS(cfg, pending.value);
+
+  Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
+
+  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+    if (!rec.items[i].enabled) continue;
+    if (!(cfg.selected_contacts & (1 << i))) continue;
+    String number = String(rec.items[i].number);
+    if (number.length() == 0) continue;
+    String normalized;
+    if (!normalizePhoneNumber(number, normalized)) continue;
+    if (!modemReady) break;
+    sendSMS(normalized, msg);
+  }
+
+  Shared_writeInputRegister(MODEM_STATUS_REGISTER,
+    modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
 }
 
 static String buildAlarmSMS(const DigitalInputConfig &cfg) {
@@ -977,6 +1036,11 @@ void Modem_task(void *pvParameters) {
     size_t returnSlotToProcess = 0;
     if (modemReady && takeNextPendingReturnSlot(returnSlotToProcess)) {
       dispatchReturnMessage(returnSlotToProcess);
+    }
+
+    AIPendingSMS aiPending = {};
+    if (modemReady && Shared_takeAIPendingSMS(aiPending)) {
+      dispatchAISMS(aiPending);
     }
 
     if (now - lastSmsCheckMs >= 5000) {

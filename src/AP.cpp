@@ -1632,8 +1632,8 @@ static const char *htmlPage() {
           <div id="di_form_container" style="display:none">
             <form id="di_form">
               <!-- Basic Settings Section -->
-              <div style="margin-bottom:24px">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #5c00d4">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
@@ -1746,8 +1746,8 @@ static const char *htmlPage() {
           <div id="ai_form_container" style="display:none">
             <form id="ai_form">
               <!-- Basic Settings Section -->
-              <div style="margin-bottom:24px">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #d400c2">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
@@ -1933,8 +1933,8 @@ static const char *htmlPage() {
           <div id="do_form_container">
             <form id="do_form">
               <!-- Basic Settings Section -->
-              <div style="margin-bottom:24px">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 16px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #d40000">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>

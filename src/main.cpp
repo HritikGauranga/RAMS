@@ -29,6 +29,10 @@ void setup() {
   digitalWrite(AP_STATUS_LED_PIN, LOW);
   digitalWrite(MODEM_INIT_STATUS_PIN, LOW);
 
+  // Keep relay output pins OFF (active LOW) before IOScanner_init() runs
+  pinMode(25, OUTPUT); digitalWrite(25, HIGH);
+  pinMode(13, OUTPUT); digitalWrite(13, HIGH);
+
   // Mount LittleFS - NEVER auto-format to preserve user data
   if (!LittleFS.begin(false)) {
     Serial.println("[ERROR] LittleFS mount failed!");

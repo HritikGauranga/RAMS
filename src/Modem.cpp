@@ -276,6 +276,48 @@ static String buildSystemStatusSMS() {
   return msg;
 }
 
+static String buildIOStatusSMS() {
+  SystemSnapshot snap = Shared_getSnapshot();
+
+  String msg = "[Inputs]\n";
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+    DigitalInputConfig cfg = {};
+    Shared_getDigitalInputConfig(i, cfg);
+    bool high = snap.digitalInputs[i] != 0;
+    bool inAlarm = cfg.enabled && (cfg.normallyClosed ? !high : high);
+    msg += "DI" + String(i + 1) + ": " + (high ? "HIGH" : "LOW") + ", " + (inAlarm ? "Alarm" : "Normal") + "\n";
+  }
+  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
+    AnalogInputConfig cfg = {};
+    Shared_getAnalogInputConfig(i, cfg);
+    bool inAlarm = false;
+    Shared_getAIAlarmState(i, inAlarm);
+    msg += "AI" + String(i + 1) + ": " + String(snap.analogInputs[i], 2);
+    if (cfg.enabled && cfg.engineering_unit[0] != '\0') msg += ", " + String(cfg.engineering_unit);
+    msg += " " + String(inAlarm ? "Alarm" : "Normal") + "\n";
+  }
+  msg += "[Outputs]\n";
+  for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
+    RelayConfig cfg = {};
+    Shared_getRelayConfig(i, cfg);
+    String contact = cfg.enabled ? (cfg.alarm_source > 0 ? "NC" : "NO") : "NO";
+    msg += "DO" + String(i + 1) + ": " + (snap.relayState[i] ? "ON" : "OFF") + ", " + contact;
+    if (i + 1 < RELAY_OUTPUT_COUNT) msg += "\n";
+  }
+  return msg;
+}
+
+static void processIORequest(const String &sender) {
+  if (!isAuthorizedSender(sender)) {
+    Serial.println("[SMS] Unauthorized sender for I/O request: " + sender);
+    return;
+  }
+  String msg = buildIOStatusSMS();
+  if (!sendSMS(sender, msg)) {
+    Serial.println("[SMS] Failed to send I/O status SMS to " + sender);
+  }
+}
+
 static void processStatusRequest(const String &sender) {
   if (!isAuthorizedSender(sender)) {
     Serial.println("[SMS] Unauthorized sender for status request: " + sender);
@@ -482,6 +524,8 @@ static void checkAndProcessSMS() {
           processStatusRequest(sender);
         } else if (upperBody.indexOf("GET IP%") >= 0) {
           processIpRequest(sender, body);
+        } else if (upperBody.indexOf("GET I/O") >= 0) {
+          processIORequest(sender);
         } else {
           int cmdIdx = body.indexOf("Set Relay%");
           if (cmdIdx >= 0) {
@@ -508,6 +552,8 @@ static void checkAndProcessSMS() {
       processStatusRequest(sender);
     } else if (upperBody.indexOf("GET IP%") >= 0) {
       processIpRequest(sender, body);
+    } else if (upperBody.indexOf("GET I/O") >= 0) {
+      processIORequest(sender);
     } else {
       int cmdIdx = body.indexOf("Set Relay%");
       if (cmdIdx >= 0) {

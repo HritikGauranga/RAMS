@@ -2008,121 +2008,97 @@ static const char *htmlPage() {
       <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
-          <div class="subtitle">Manage contacts for SMS event notifications and relay control. Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
-
-          <h3>Event Recipients</h3>
-          <div id="rec_list"></div>
-          <button class="btn" onclick="addRecContact()">Add Recipient</button>
-
-          <div style="margin-top:10px">
-            <div id="phones_status" style="display:none;margin-bottom:12px"></div>
-            <button class="btn primary" onclick="saveContacts()">Save Contacts</button>
+          <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 6px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
+            <div style="font-size:12px;color:#999;margin-bottom:14px">Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
+            <div id="rec_list"></div>
+            <button class="btn" onclick="addRecContact()" style="margin-top:10px">Add Recipient</button>
+          </div>
+          <div id="phones_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px;margin-top:8px">
+            <button class="btn primary" onclick="saveContacts()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Contacts</button>
           </div>
         </div>
       </div>
 
       <div id="network" class="tab" style="display:none">
         <div class="panel">
-          <div class="form-section" style="margin-top:0">
-            <h3>Connection Mode</h3>
-            <div class="field full">
-              <div class="row">
-                <input id="net_useDhcp" type="checkbox" style="width:auto" onchange="toggleNetworkStaticFields()">
-                <label for="net_useDhcp" style="margin:0 0 0 8px">Use DHCP for Ethernet</label>
+          <!-- Connection Mode -->
+          <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Connection Mode</h3>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input id="net_useDhcp" type="checkbox" style="width:18px;height:18px;cursor:pointer" onchange="toggleNetworkStaticFields()">
+              <label for="net_useDhcp" style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Use DHCP for Ethernet</label>
+            </div>
+          </div>
+          <!-- Static Network Settings -->
+          <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Static Network Settings</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Static IP</label>
+                <input id="net_staticIp" type="text" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Subnet Mask</label>
+                <input id="net_subnetMask" type="text" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Gateway IP</label>
+                <input id="net_gatewayIp" type="text" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+            <div style="font-size:11px;color:#999;margin-top:10px">Reboot device after saving to apply network changes.</div>
+          </div>
+          <div id="net_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px;margin-bottom:28px">
+            <button class="btn primary" onclick="saveNetworkCfg()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Network Settings</button>
+          </div>
+          <!-- SIM Configuration -->
+          <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #9C27B0">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SIM Configuration</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Service Provider</label>
+                <input id="sim_provider" type="text" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SIM Phone Number</label>
+                <input id="sim_phone" type="text" placeholder="e.g., +1234567890" maxlength="19" oninput="let v=this.value.replace(/[^0-9+]/g,'');if(v.startsWith('+'))v='+'+v.substring(1).replace(/\+/g,'');else v=v.replace(/\+/g,'');this.value=v;" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SMS Command PIN</label>
+                <input id="sim_relay_pin" type="text" placeholder="e.g. 0000" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
               </div>
             </div>
           </div>
-
-          <div class="form-section">
-            <h3>Static Network Settings</h3>
-            <div class="form-grid">
-              <div class="field">
-                <label>Static IP</label>
-                <input id="net_staticIp" class="input" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
-              </div>
-              <div class="field">
-                <label>Subnet Mask</label>
-                <input id="net_subnetMask" class="input" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
-              </div>
-              <div class="field">
-                <label>Gateway IP</label>
-                <input id="net_gatewayIp" class="input" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)">
-              </div>
-            </div>
-            <div class="form-actions">
-              <div id="net_status" style="display:none;margin-bottom:12px"></div>
-              <button class="btn primary" onclick="saveNetworkCfg()">Save Network Settings</button>
-            </div>
-            <p class="muted" style="margin-top:8px">Reboot device after saving to apply network changes.</p>
-          </div>
-
-          <div class="form-section">
-            <h3>SIM Configuration</h3>
-            <div class="form-grid">
-              <div class="field">
-                <label>Service Provider</label>
-                <input id="sim_provider" type="text" class="input" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)">
-              </div>
-              <div class="field">
-                <label>SIM Phone Number</label>
-                <input
-                    id="sim_phone"
-                    type="text"
-                    class="input"
-                    placeholder="e.g., +1234567890"
-                    maxlength="19"
-                    oninput="
-                        let v=this.value.replace(/[^0-9+]/g,'');
-                        if(v.startsWith('+')){
-                            v='+'+v.substring(1).replace(/\+/g,'');
-                        }else{
-                            v=v.replace(/\+/g,'');
-                        }
-                        this.value=v;
-                    ">
-                </div>
-                <div class="field">
-                  <label>SMS command  PIN</label>
-                  <input id="sim_relay_pin" type="text" class="input" placeholder="e.g. 0000" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)">
-                </div>
-            </div>
-            <div class="form-actions">
-              <div id="sim_status" style="display:none;margin-bottom:12px"></div>
-              <button class="btn primary" onclick="saveSIMConfig()">Save SIM Configuration</button>
-            </div>
+          <div id="sim_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn primary" onclick="saveSIMConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save SIM Configuration</button>
           </div>
         </div>
       </div>
       <div id="sysconfig" class="tab" style="display:none">
         <div class="panel">
-          <div class="form-section" style="margin-top:0">
-            <h3>Site Details</h3>
-            <div class="form-grid">
-              <div class="field">
-                <label>Site Name</label>
-                <input id="site_name"
-                type="text"
-                class="input"
-                maxlength="63"
-                oninput="if(this.value.length>63)this.value=this.value.slice(0,63)">
-                </div>
-              <div class="field full">
-                <label>Site Address</label>
-                <textarea id="site_address"
-                rows="3"
-                class="input"
-                maxlength="127"
-                oninput="if(this.value.length>127)this.value=this.value.slice(0,127)"></textarea>
-                </div>
-            </div>
-            <div class="form-actions">
-              <div id="sys_status" style="display:none;margin-bottom:12px"></div>
-              <button class="btn primary" onclick="saveSystemConfig()">Save Site Details</button>
+          <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Site Details</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Name</label>
+                <input id="site_name" type="text" maxlength="63" oninput="if(this.value.length>63)this.value=this.value.slice(0,63)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Address</label>
+                <textarea id="site_address" rows="3" maxlength="127" oninput="if(this.value.length>127)this.value=this.value.slice(0,127)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+              </div>
             </div>
           </div>
-
-         </div>
+          <div id="sys_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px;margin-top:8px">
+            <button class="btn primary" onclick="saveSystemConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Site Details</button>
+          </div>
         </div>
+      </div>
       </div>
     </div>
   </div>
@@ -2866,9 +2842,7 @@ function saveDOConfig(){
 
 
 function showStatus(msg, ok) {
-  var el = document.getElementById('sys_status'); if (!el) return;
-  el.textContent = msg; el.style.display = 'block'; el.style.color = ok ? 'green' : 'red';
-  setTimeout(function() { el.style.display = 'none'; }, 4000);
+  showSmallStatus('sys_status', msg, ok);
 }
 
 function loadSystemConfig(){

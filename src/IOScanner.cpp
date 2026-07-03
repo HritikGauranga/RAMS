@@ -306,10 +306,16 @@ static void processDigitalInput(size_t index) {
         state.returnTriggerTime = 0;
         Serial.printf("[DI%d] ALARM TRIGGERED\n", index + 1);
 
-        // Write 1 only now — Modem task sees the rising edge here, after TTA
+        // Write 1 so dashboard reflects alarm state
         Shared_writeDigitalInput(index, 1);
 
+        // Queue alarm SMS directly — do not rely on Modem edge scan
         if (!state.alarmSmsSent) {
+          DigitalInputConfig smsCfg = {};
+          Shared_getDigitalInputConfig(index, smsCfg);
+          if (smsCfg.alarm_sms_enabled) {
+            Shared_postDIPendingSMS(index, true);
+          }
           state.alarmSmsSent = true;
         }
 
@@ -342,10 +348,15 @@ static void processDigitalInput(size_t index) {
         state.alarmSmsSent = false;
         Serial.printf("[DI%d] ALARM CLEARED\n", index + 1);
 
-        // Write 0 only now — Modem task sees the falling edge here, after TTR
+        // Write 0 so dashboard reflects cleared state
         Shared_writeDigitalInput(index, 0);
 
-        // Return SMS handled by Modem task via pendingReturnSlots
+        // Queue return SMS directly
+        DigitalInputConfig smsCfg = {};
+        Shared_getDigitalInputConfig(index, smsCfg);
+        if (smsCfg.return_sms_enabled) {
+          Shared_postDIPendingSMS(index, false);
+        }
 
         Shared_writeAlarmResult(index, STATUS_IDLE);
 

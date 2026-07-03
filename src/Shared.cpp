@@ -675,28 +675,71 @@ bool Shared_getAIAlarmState(size_t index, bool &out) {
 // ---------------------------------------------------------------------------
 // AI pending SMS queue
 // ---------------------------------------------------------------------------
-static AIPendingSMS aiPendingQueue[ANALOG_INPUT_COUNT] = {};
+static AIPendingSMS aiPendingQueue[ANALOG_INPUT_COUNT * AI_SMS_QUEUE_DEPTH] = {};
+static size_t aiQueueHead = 0;
+static size_t aiQueueTail = 0;
+constexpr size_t AI_QUEUE_SIZE = ANALOG_INPUT_COUNT * AI_SMS_QUEUE_DEPTH;
 
 bool Shared_postAIPendingSMS(size_t index, bool isAlarm, float value) {
   if (index >= ANALOG_INPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  aiPendingQueue[index] = { index, isAlarm, value, true };
+  size_t nextTail = (aiQueueTail + 1) % AI_QUEUE_SIZE;
+  if (nextTail == aiQueueHead) {
+    // Queue full — drop oldest
+    aiQueueHead = (aiQueueHead + 1) % AI_QUEUE_SIZE;
+  }
+  aiPendingQueue[aiQueueTail] = { index, isAlarm, value, true };
+  aiQueueTail = nextTail;
   Shared_unlockState();
   return true;
 }
 
 bool Shared_takeAIPendingSMS(AIPendingSMS &out) {
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
-    if (aiPendingQueue[i].valid) {
-      out = aiPendingQueue[i];
-      aiPendingQueue[i].valid = false;
-      Shared_unlockState();
-      return true;
-    }
+  if (aiQueueHead == aiQueueTail) {
+    Shared_unlockState();
+    return false;
   }
+  out = aiPendingQueue[aiQueueHead];
+  aiPendingQueue[aiQueueHead].valid = false;
+  aiQueueHead = (aiQueueHead + 1) % AI_QUEUE_SIZE;
   Shared_unlockState();
-  return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// DI pending SMS queue
+// ---------------------------------------------------------------------------
+static DIPendingSMS diPendingQueue[DIGITAL_INPUT_COUNT * DI_SMS_QUEUE_DEPTH] = {};
+static size_t diQueueHead = 0;
+static size_t diQueueTail = 0;
+constexpr size_t DI_QUEUE_SIZE = DIGITAL_INPUT_COUNT * DI_SMS_QUEUE_DEPTH;
+
+bool Shared_postDIPendingSMS(size_t index, bool isAlarm) {
+  if (index >= DIGITAL_INPUT_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  size_t nextTail = (diQueueTail + 1) % DI_QUEUE_SIZE;
+  if (nextTail == diQueueHead) {
+    // Queue full — drop oldest
+    diQueueHead = (diQueueHead + 1) % DI_QUEUE_SIZE;
+  }
+  diPendingQueue[diQueueTail] = { index, isAlarm, true };
+  diQueueTail = nextTail;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_takeDIPendingSMS(DIPendingSMS &out) {
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  if (diQueueHead == diQueueTail) {
+    Shared_unlockState();
+    return false;
+  }
+  out = diPendingQueue[diQueueHead];
+  diPendingQueue[diQueueHead].valid = false;
+  diQueueHead = (diQueueHead + 1) % DI_QUEUE_SIZE;
+  Shared_unlockState();
+  return true;
 }
 
 bool Shared_writeInputRegister(size_t index, int16_t value) {

@@ -812,148 +812,31 @@ static String buildReturnSMS(const DigitalInputConfig &cfg) {
 }
 
 // ---------------------------------------------------------------------------
-// dispatchMessage - sends SMS using DI config (message + selected_contacts)
+// dispatchDISMS - sends alarm or return SMS from DI queue entry
 // ---------------------------------------------------------------------------
-static int16_t dispatchMessage(size_t inputIndex) {
-  ContactList rec = {};
-  if (!Shared_getRecipientContacts(rec)) return STATUS_ERROR_CONFIG;
-  if (rec.count == 0) return STATUS_ERROR_EMPTY;
-
+static void dispatchDISMS(const DIPendingSMS &pending) {
   DigitalInputConfig diCfg = {};
-  Shared_getDigitalInputConfig(inputIndex, diCfg);
+  if (!Shared_getDigitalInputConfig(pending.index, diCfg)) return;
+  if (!diCfg.enabled) return;
 
-  String msg = buildAlarmSMS(diCfg);
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec) || rec.count == 0) return;
+
+  String msg = pending.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
 
   Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
-  uint8_t sentCount = 0;
-
-  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
-    if (!rec.items[i].enabled) continue;
-    if (!(diCfg.selected_contacts & (1 << i))) continue;  // Respect bitmask
-    String number = String(rec.items[i].number);
-    if (number.length() == 0) continue;
-    String normalizedNumber;
-    if (!normalizePhoneNumber(number, normalizedNumber)) {
-      Serial.printf("[SMS] Skipping invalid number format: %s\n", number.c_str());
-      continue;
-    }
-
-    if (!modemReady) {
-      Serial.printf("[SMS] Modem not ready, skipping remaining numbers from slot %u\n", (unsigned)i);
-      break;
-    }
-
-    if (sendSMS(normalizedNumber, msg)) sentCount++;
-  }
-
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER,
-    modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
-
-  if (sentCount == 0) return STATUS_ERROR_SEND;
-  return (int16_t)sentCount;
-}
-
-// ---------------------------------------------------------------------------
-// dispatchReturnMessage - sends return SMS using DI config
-// ---------------------------------------------------------------------------
-static int16_t dispatchReturnMessage(size_t inputIndex) {
-  ContactList rec = {};
-  if (!Shared_getRecipientContacts(rec)) return STATUS_ERROR_CONFIG;
-  if (rec.count == 0) return STATUS_ERROR_EMPTY;
-
-  DigitalInputConfig diCfg = {};
-  Shared_getDigitalInputConfig(inputIndex, diCfg);
-
-  if (!diCfg.return_sms_enabled) return STATUS_IDLE;
-
-  String msg = buildReturnSMS(diCfg);
-
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
-  uint8_t sentCount = 0;
-
   for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
     if (!rec.items[i].enabled) continue;
     if (!(diCfg.selected_contacts & (1 << i))) continue;
     String number = String(rec.items[i].number);
     if (number.length() == 0) continue;
-    String normalizedNumber;
-    if (!normalizePhoneNumber(number, normalizedNumber)) continue;
+    String normalized;
+    if (!normalizePhoneNumber(number, normalized)) continue;
     if (!modemReady) break;
-    if (sendSMS(normalizedNumber, msg)) sentCount++;
+    sendSMS(normalized, msg);
   }
-
   Shared_writeInputRegister(MODEM_STATUS_REGISTER,
     modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
-
-  return sentCount > 0 ? (int16_t)sentCount : STATUS_ERROR_SEND;
-}
-
-// ---------------------------------------------------------------------------
-// Rising-edge scanner + pending-slot tracker
-//
-// pendingSlots[] — per-slot flag set on rising edge and consumed after
-// dispatch. This keeps one-shot behavior per 0->1 transition without queues.
-//
-// Clear-on-zero — when the PLC writes 0 to a trigger register, the
-// corresponding result register is cleared back to STATUS_IDLE (0).
-// This resets the slot so the PLC can write 1 again to retrigger.
-// ---------------------------------------------------------------------------
-static bool pendingSlots[DIGITAL_INPUT_COUNT] = {};
-static bool pendingReturnSlots[DIGITAL_INPUT_COUNT] = {};
-static uint8_t lowStableCount[DIGITAL_INPUT_COUNT] = {};
-
-static void scanTriggerEdges(bool previousState[DIGITAL_INPUT_COUNT]) {
-  SystemSnapshot snapshot = Shared_getSnapshot();
-  constexpr uint8_t LOW_REARM_SCANS = 4; // 4 * 25ms ~= 100ms stable low
-
-  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
-    bool current = snapshot.digitalInputs[i] != 0;
-
-    if (!current) {
-      if (lowStableCount[i] < 255) lowStableCount[i]++;
-      if (previousState[i] && lowStableCount[i] >= LOW_REARM_SCANS) {
-        Shared_writeAlarmResult(i, STATUS_IDLE);
-        previousState[i] = false;
-        pendingReturnSlots[i] = true;  // Queue return SMS
-        Serial.printf("[EDGE] Input %u cleared (-> 0)\n", (unsigned)i);
-      }
-      continue;
-    }
-
-    lowStableCount[i] = 0;
-
-    if (!previousState[i] && !pendingSlots[i]) {
-      pendingSlots[i] = true;
-      previousState[i] = true;
-    }
-  }
-}
-
-static bool takeNextPendingSlot(size_t &slotIndex) {
-  SystemSnapshot snapshot = Shared_getSnapshot();
-  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
-    if (!pendingSlots[i]) continue;
-
-    if (snapshot.digitalInputs[i] == 0) {
-      pendingSlots[i] = false;
-      continue;
-    }
-
-    slotIndex = i;
-    pendingSlots[i] = false;
-    return true;
-  }
-  return false;
-}
-
-static bool takeNextPendingReturnSlot(size_t &slotIndex) {
-  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
-    if (!pendingReturnSlots[i]) continue;
-    slotIndex = i;
-    pendingReturnSlots[i] = false;
-    return true;
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -992,54 +875,42 @@ void Modem_task(void *pvParameters) {
   initModem();
   Serial.println("[MODEM TASK] Init complete, starting SMS processing");
 
-  bool   previousState[DIGITAL_INPUT_COUNT] = {};
-  size_t slotToProcess = 0;
-
   for (;;) {
-    scanTriggerEdges(previousState);
-
     unsigned long now = millis();
 
-    if (takeNextPendingSlot(slotToProcess)) {
-      if (!modemReady) {
-        // If SIM was last seen as missing, run a full modem init sequence
-        // so hot-inserted SIMs get detected through the normal bring-up path.
-        if (simMissingLatched) {
-          if (now - lastSimRecheckMs >= 15000) {
-            lastSimRecheckMs = now;
-            Serial.println("[MODEM] SIM missing latched - running full modem init...");
-            initModem();
-            if (modemReady) {
-              simMissingLatched = false;
-              consecutiveModemHealthFailures = 0;
-            }
-          } else if (now - lastNotReadyLogMs >= 5000) {
-            Serial.println("[MODEM] Not ready - SIM-missing init cooldown active");
-            lastNotReadyLogMs = now;
-          }
-        } else if (now - lastReinitAttemptMs >= 12000) {
-          Serial.println("[MODEM] Not ready - attempting reinit...");
-          lastReinitAttemptMs = now;
+    // Handle modem reinit if not ready
+    if (!modemReady) {
+      if (simMissingLatched) {
+        if (now - lastSimRecheckMs >= 15000) {
+          lastSimRecheckMs = now;
+          Serial.println("[MODEM] SIM missing latched - running full modem init...");
           initModem();
+          if (modemReady) {
+            simMissingLatched = false;
+            consecutiveModemHealthFailures = 0;
+          }
         } else if (now - lastNotReadyLogMs >= 5000) {
-          // Rate-limit repetitive cooldown logs to keep serial output readable.
-          Serial.println("[MODEM] Not ready - reinit cooldown active");
+          Serial.println("[MODEM] Not ready - SIM-missing init cooldown active");
           lastNotReadyLogMs = now;
         }
+      } else if (now - lastReinitAttemptMs >= 12000) {
+        Serial.println("[MODEM] Not ready - attempting reinit...");
+        lastReinitAttemptMs = now;
+        initModem();
+      } else if (now - lastNotReadyLogMs >= 5000) {
+        Serial.println("[MODEM] Not ready - reinit cooldown active");
+        lastNotReadyLogMs = now;
       }
-
-      if (!modemReady) {
-        Shared_writeAlarmResult(slotToProcess, simMissingLatched ? STATUS_ERROR_SIM : STATUS_ERROR_MODEM);
-        continue;
-      }
-
-      int16_t result = dispatchMessage(slotToProcess);
-      Shared_writeAlarmResult(slotToProcess, result);
     }
 
-    size_t returnSlotToProcess = 0;
-    if (modemReady && takeNextPendingReturnSlot(returnSlotToProcess)) {
-      dispatchReturnMessage(returnSlotToProcess);
+    // Drain DI SMS queue (alarm and return entries)
+    DIPendingSMS diPending = {};
+    if (Shared_takeDIPendingSMS(diPending)) {
+      if (!modemReady) {
+        Shared_writeAlarmResult(diPending.index, simMissingLatched ? STATUS_ERROR_SIM : STATUS_ERROR_MODEM);
+      } else {
+        dispatchDISMS(diPending);
+      }
     }
 
     AIPendingSMS aiPending = {};

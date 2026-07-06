@@ -276,45 +276,65 @@ static String buildSystemStatusSMS() {
   return msg;
 }
 
-static String buildIOStatusSMS() {
+static String buildInputStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-
-  String msg = "[Inputs]\n";
+  String msg = "[Digital Inputs]\n";
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};
     Shared_getDigitalInputConfig(i, cfg);
-    bool high = snap.digitalInputs[i] != 0;
-    bool inAlarm = cfg.enabled && (cfg.normallyClosed ? !high : high);
-    msg += "DI" + String(i + 1) + ": " + (high ? "HIGH" : "LOW") + ", " + (inAlarm ? "Alarm" : "Normal") + "\n";
+    bool inAlarm = snap.digitalInputs[i] != 0;
+    String name = String(cfg.name);
+    if (name.length() == 0) name = "DI" + String(i + 1);
+    msg += name + ": " + (inAlarm ? "Alarm" : "Normal") + "\n";
   }
+  msg += "[Analog Inputs]\n";
   for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
     AnalogInputConfig cfg = {};
     Shared_getAnalogInputConfig(i, cfg);
     bool inAlarm = false;
     Shared_getAIAlarmState(i, inAlarm);
-    msg += "AI" + String(i + 1) + ": " + String(snap.analogInputs[i], 2);
-    if (cfg.enabled && cfg.engineering_unit[0] != '\0') msg += ", " + String(cfg.engineering_unit);
-    msg += " " + String(inAlarm ? "Alarm" : "Normal") + "\n";
+    String name = String(cfg.name);
+    if (name.length() == 0) name = "AI" + String(i + 1);
+    msg += name + ": " + String(snap.analogInputs[i], 2);
+    if (cfg.enabled && cfg.engineering_unit[0] != '\0') msg += " " + String(cfg.engineering_unit);
+    msg += ", " + String(inAlarm ? "Alarm" : "Normal") + "\n";
   }
-  msg += "[Outputs]\n";
+  return msg;
+}
+
+static String buildRelayStatusSMS() {
+  SystemSnapshot snap = Shared_getSnapshot();
+  String msg = "[Relay Outputs]\n";
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
     RelayConfig cfg = {};
     Shared_getRelayConfig(i, cfg);
-    String contact = cfg.enabled ? (cfg.alarm_source > 0 ? "NC" : "NO") : "NO";
-    msg += "DO" + String(i + 1) + ": " + (snap.relayState[i] ? "ON" : "OFF") + ", " + contact;
+    String name = String(cfg.name);
+    if (name.length() == 0) name = "DO" + String(i + 1);
+    msg += "DO" + String(i + 1) + " (" + name + "): " + (snap.relayState[i] ? "ON" : "OFF");
     if (i + 1 < RELAY_OUTPUT_COUNT) msg += "\n";
   }
   return msg;
 }
 
-static void processIORequest(const String &sender) {
+static void processInputRequest(const String &sender) {
   if (!isAuthorizedSender(sender)) {
-    Serial.println("[SMS] Unauthorized sender for I/O request: " + sender);
+    Serial.println("[SMS] Unauthorized sender for INPUT request: " + sender);
     return;
   }
-  String msg = buildIOStatusSMS();
+  String msg = buildInputStatusSMS();
   if (!sendSMS(sender, msg)) {
-    Serial.println("[SMS] Failed to send I/O status SMS to " + sender);
+    Serial.println("[SMS] Failed to send input status SMS to " + sender);
+  }
+}
+
+static void processRelayStatusRequest(const String &sender) {
+  if (!isAuthorizedSender(sender)) {
+    Serial.println("[SMS] Unauthorized sender for RELAY request: " + sender);
+    return;
+  }
+  String msg = buildRelayStatusSMS();
+  if (!sendSMS(sender, msg)) {
+    Serial.println("[SMS] Failed to send relay status SMS to " + sender);
   }
 }
 
@@ -461,22 +481,18 @@ static void processRelayCommand(const String &sender, const String &body) {
   if (isOn) {
     Shared_setRelayState(relayIdx, true);
     Serial.println("[SMS] Relay " + relayName + " ON");
-    if (onTimeStr.length() > 0 && !onTimeStr.equals("0")) {
-      unsigned long onTime = onTimeStr.toInt();
-      if (onTime > 0 && onTime <= 65535) {
-        schedulePulse(relayIdx, onTime);
-      }
+    // Cancel any existing pulse first
+    for (auto &p : pulseSlots) {
+      if (p.relayIdx == (size_t)relayIdx) { p.relayIdx = (size_t)-1; p.offAtMs = 0; }
     }
+    unsigned long onTime = onTimeStr.toInt();
+    if (onTime > 0) schedulePulse(relayIdx, onTime);
   } else if (isOff) {
     Shared_setRelayState(relayIdx, false);
     Serial.println("[SMS] Relay " + relayName + " OFF");
-    if (!onTimeStr.equals("0")) {
-      for (auto &p : pulseSlots) {
-        if (p.relayIdx == (size_t)relayIdx) {
-          p.relayIdx = (size_t)-1;
-          p.offAtMs = 0;
-        }
-      }
+    // Always cancel any pending pulse on OFF
+    for (auto &p : pulseSlots) {
+      if (p.relayIdx == (size_t)relayIdx) { p.relayIdx = (size_t)-1; p.offAtMs = 0; }
     }
   } else {
     Serial.println("[SMS] Invalid state: " + state);
@@ -524,8 +540,10 @@ static void checkAndProcessSMS() {
           processStatusRequest(sender);
         } else if (upperBody.indexOf("GET IP%") >= 0) {
           processIpRequest(sender, body);
-        } else if (upperBody.indexOf("GET I/O") >= 0) {
-          processIORequest(sender);
+        } else if (upperBody.indexOf("GET INPUT") >= 0) {
+          processInputRequest(sender);
+        } else if (upperBody.indexOf("GET RELAY") >= 0) {
+          processRelayStatusRequest(sender);
         } else {
           int cmdIdx = body.indexOf("Set Relay%");
           if (cmdIdx >= 0) {
@@ -552,8 +570,10 @@ static void checkAndProcessSMS() {
       processStatusRequest(sender);
     } else if (upperBody.indexOf("GET IP%") >= 0) {
       processIpRequest(sender, body);
-    } else if (upperBody.indexOf("GET I/O") >= 0) {
-      processIORequest(sender);
+    } else if (upperBody.indexOf("GET INPUT") >= 0) {
+      processInputRequest(sender);
+    } else if (upperBody.indexOf("GET RELAY") >= 0) {
+      processRelayStatusRequest(sender);
     } else {
       int cmdIdx = body.indexOf("Set Relay%");
       if (cmdIdx >= 0) {
@@ -826,8 +846,6 @@ static void dispatchAISMS(const AIPendingSMS &pending) {
 }
 
 static String buildAlarmSMS(const DigitalInputConfig &cfg) {
-  // NC: alarm = input opened -> LOW. NO: alarm = input closed -> HIGH.
-  String value = cfg.normallyClosed ? "LOW" : "HIGH";
   String type  = cfg.normallyClosed ? "NC" : "NO";
   String state = String(cfg.alarm_message);
   if (state.length() == 0) state = String(cfg.name) + " ALARM";
@@ -836,14 +854,11 @@ static String buildAlarmSMS(const DigitalInputConfig &cfg) {
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
   msg += "Type: " + type + "\n";
-  msg += "Value: " + value + "\n";
   msg += "State: " + state;
   return msg;
 }
 
 static String buildReturnSMS(const DigitalInputConfig &cfg) {
-  // NC: return = input closed -> HIGH. NO: return = input opened -> LOW.
-  String value = cfg.normallyClosed ? "HIGH" : "LOW";
   String type  = cfg.normallyClosed ? "NC" : "NO";
   String state = String(cfg.return_message);
   if (state.length() == 0) state = String(cfg.name) + " RETURN TO NORMAL";
@@ -852,7 +867,6 @@ static String buildReturnSMS(const DigitalInputConfig &cfg) {
   msg += buildSMSHeader() + "\n";
   msg += "Input: " + String(cfg.name) + "\n";
   msg += "Type: " + type + "\n";
-  msg += "Value: " + value + "\n";
   msg += "State: " + state;
   return msg;
 }

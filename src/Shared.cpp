@@ -722,7 +722,6 @@ bool Shared_postDIPendingSMS(size_t index, bool isAlarm) {
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
   size_t nextTail = (diQueueTail + 1) % DI_QUEUE_SIZE;
   if (nextTail == diQueueHead) {
-    // Queue full — drop oldest
     diQueueHead = (diQueueHead + 1) % DI_QUEUE_SIZE;
   }
   diPendingQueue[diQueueTail] = { index, isAlarm, true };

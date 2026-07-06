@@ -283,8 +283,8 @@ static String buildSystemStatusSMS() {
 
 static String buildInputStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-  String msg = buildSMSHeader() + "\n";
-  msg += "[Digital Inputs]\n";
+  String msg = "[Digital Inputs]\n";
+  msg += buildSMSHeader() + "\n";
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};
     Shared_getDigitalInputConfig(i, cfg);
@@ -310,8 +310,8 @@ static String buildInputStatusSMS() {
 
 static String buildRelayStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-  String msg = buildSMSHeader() + "\n";
-  msg += "[Relay Outputs]\n";
+  String msg = "[Relay Outputs]\n";
+  msg += buildSMSHeader() + "\n";
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
     RelayConfig cfg = {};
     Shared_getRelayConfig(i, cfg);
@@ -325,6 +325,48 @@ static String buildRelayStatusSMS() {
     if (i + 1 < RELAY_OUTPUT_COUNT) msg += "\n";
   }
   return msg;
+}
+
+static String buildAlarmStatusSMS() {
+  SystemSnapshot snap = Shared_getSnapshot();
+  String msg = "[Active Alarms]\n";
+  msg += buildSMSHeader() + "\n";
+  bool any = false;
+  for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
+    if (snap.digitalInputs[i] == 0) continue;
+    DigitalInputConfig cfg = {};
+    Shared_getDigitalInputConfig(i, cfg);
+    String name = String(cfg.name);
+    if (name.length() == 0) name = "DI" + String(i + 1);
+    msg += name + ": Alarm\n";
+    any = true;
+  }
+  for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
+    bool inAlarm = false;
+    Shared_getAIAlarmState(i, inAlarm);
+    if (!inAlarm) continue;
+    AnalogInputConfig cfg = {};
+    Shared_getAnalogInputConfig(i, cfg);
+    String name = String(cfg.name);
+    if (name.length() == 0) name = "AI" + String(i + 1);
+    msg += name + ": " + String(snap.analogInputs[i], 2);
+    if (cfg.engineering_unit[0] != '\0') msg += " " + String(cfg.engineering_unit);
+    msg += ", Alarm\n";
+    any = true;
+  }
+  if (!any) msg += "No Active Alarms";
+  return msg;
+}
+
+static void processAlarmRequest(const String &sender) {
+  if (!isAuthorizedSender(sender)) {
+    Serial.println("[SMS] Unauthorized sender for ALARM request: " + sender);
+    return;
+  }
+  String msg = buildAlarmStatusSMS();
+  if (!sendSMS(sender, msg)) {
+    Serial.println("[SMS] Failed to send alarm status SMS to " + sender);
+  }
 }
 
 static void processInputRequest(const String &sender) {
@@ -552,6 +594,8 @@ static void checkAndProcessSMS() {
           processStatusRequest(sender);
         } else if (upperBody.indexOf("GET IP%") >= 0) {
           processIpRequest(sender, body);
+        } else if (upperBody.indexOf("GET ALARM") >= 0) {
+          processAlarmRequest(sender);
         } else if (upperBody.indexOf("GET INPUT") >= 0) {
           processInputRequest(sender);
         } else if (upperBody.indexOf("GET RELAY") >= 0) {
@@ -582,6 +626,8 @@ static void checkAndProcessSMS() {
       processStatusRequest(sender);
     } else if (upperBody.indexOf("GET IP%") >= 0) {
       processIpRequest(sender, body);
+    } else if (upperBody.indexOf("GET ALARM") >= 0) {
+      processAlarmRequest(sender);
     } else if (upperBody.indexOf("GET INPUT") >= 0) {
       processInputRequest(sender);
     } else if (upperBody.indexOf("GET RELAY") >= 0) {

@@ -192,5 +192,9 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg);
 bool Shared_isAPModeActive();
 void Shared_setAPModeActive(bool active);
 
+// Last I/O event timestamp (set on DI/AI alarm or return)
+void Shared_setLastEventTime();
+time_t Shared_getLastEventTime();
+
 // Encoding
 uint16_t encodeSignedRegister(int16_t value);

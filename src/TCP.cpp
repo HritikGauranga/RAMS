@@ -1,6 +1,7 @@
 ﻿#include "TCP.h"
 #include "Shared.h"
 #include <SPI.h>
+#include <LittleFS.h>
 #include <ETH.h>
 #include <WiFi.h>
 #include <esp_netif.h>
@@ -348,6 +349,36 @@ void TCP_init() {
   }
 
   ensureNetworkServiceStarted();
+
+  // Start NTP after network is ready
+  if (networkReady) {
+    // Load saved timezone from system_config.json
+    String tz = "UTC0";
+    if (LittleFS.exists("/system_config.json")) {
+      File f = LittleFS.open("/system_config.json", "r");
+      if (f) {
+        String json = f.readString();
+        f.close();
+        int tzIdx = json.indexOf("\"timezone\"");
+        if (tzIdx >= 0) {
+          int q1 = json.indexOf('"', tzIdx + 11);
+          int q2 = json.indexOf('"', q1 + 1);
+          if (q1 >= 0 && q2 > q1) {
+            String saved = json.substring(q1 + 1, q2);
+            saved.trim();
+            if (saved.length() > 0) tz = saved;
+          }
+        }
+      }
+    }
+    setenv("TZ", tz.c_str(), 1);
+    tzset();
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    // Re-apply TZ after configTime since it resets SNTP internals
+    setenv("TZ", tz.c_str(), 1);
+    tzset();
+    Serial.println("[NTP] NTP sync started, TZ=" + tz);
+  }
 }
 
 static void TCP_maintainDHCP() {

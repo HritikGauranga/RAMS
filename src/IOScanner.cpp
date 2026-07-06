@@ -182,6 +182,7 @@ static void processAnalogInput(size_t index) {
         Serial.printf("[AI%d] ALARM TRIGGERED: %.2f %s\n", 
                       index + 1, engValue, cfg.engineering_unit);
         Shared_setAIAlarmState(index, true);
+        Shared_setLastEventTime();
         
         // Send alarm SMS
         if (!state.alarmSmsSent) {
@@ -226,6 +227,7 @@ static void processAnalogInput(size_t index) {
           Serial.printf("[AI%d] ALARM CLEARED: %.2f %s\n", 
                         index + 1, engValue, cfg.engineering_unit);
           Shared_setAIAlarmState(index, false);
+          Shared_setLastEventTime();
           
           // Send return SMS
           sendAnalogAlarmSMS(index, cfg, engValue, false);
@@ -305,6 +307,7 @@ static void processDigitalInput(size_t index) {
         state.inAlarm = true;
         state.returnTriggerTime = 0;
         Serial.printf("[DI%d] ALARM TRIGGERED\n", index + 1);
+        Shared_setLastEventTime();
 
         // Write 1 so dashboard reflects alarm state
         Shared_writeDigitalInput(index, 1);
@@ -347,6 +350,7 @@ static void processDigitalInput(size_t index) {
         state.inAlarm = false;
         state.alarmSmsSent = false;
         Serial.printf("[DI%d] ALARM CLEARED\n", index + 1);
+        Shared_setLastEventTime();
 
         // Write 0 so dashboard reflects cleared state
         Shared_writeDigitalInput(index, 0);

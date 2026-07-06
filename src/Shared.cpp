@@ -1,5 +1,6 @@
 #include "Shared.h"
 #include <LittleFS.h>
+#include <time.h>
 
 const int BUTTON_PIN             = 33;
 const int AP_STATUS_LED_PIN      = 4;
@@ -89,6 +90,7 @@ static GatewaySettings gatewaySettings = {
 
 static int16_t alarmResults[DIGITAL_INPUT_COUNT] = {0};
 static bool    aiAlarmState[ANALOG_INPUT_COUNT]  = {false, false};
+static time_t  lastEventTime = 0;
 static int16_t inputRegsCompat[4] = {
   (int16_t)STATE_READY,
   (int16_t)STATE_IDLE,
@@ -796,6 +798,22 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   recipientContacts = filtered;
   Shared_unlockState();
   return true;
+}
+
+void Shared_setLastEventTime() {
+  time_t now;
+  time(&now);
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return;
+  lastEventTime = now;
+  Shared_unlockState();
+}
+
+time_t Shared_getLastEventTime() {
+  time_t t = 0;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return t;
+  t = lastEventTime;
+  Shared_unlockState();
+  return t;
 }
 
 // ---------------------------------------------------------------------------

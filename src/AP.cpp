@@ -769,7 +769,7 @@ static void setupWebServerRoutes() {
     }
     Shared_unlockFileSystem();
     if (body.length() == 0) {
-      body = "{\"site_name\":\"\",\"site_address\":\"\"}";
+      body = "{\"site_name\":\"\",\"site_address\":\"\",\"timezone\":\"\"}";
     }
     request->send(200, "application/json", body);
   });
@@ -781,9 +781,16 @@ static void setupWebServerRoutes() {
     }
     String site = request->hasParam("site_name", true) ? request->getParam("site_name", true)->value() : "";
     String addr = request->hasParam("site_address", true) ? request->getParam("site_address", true)->value() : "";
-    site.trim(); addr.trim();
+    String tz   = request->hasParam("timezone", true) ? request->getParam("timezone", true)->value() : "";
+    site.trim(); addr.trim(); tz.trim();
 
-    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\"}";
+    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\",\"timezone\":\"" + escapeJson(tz) + "\"}";
+
+    // Apply timezone immediately
+    if (tz.length() > 0) {
+      setenv("TZ", tz.c_str(), 1);
+      tzset();
+    }
 
     if (!Shared_lockFileSystem(pdMS_TO_TICKS(2000))) {
       request->send(500, "application/json", "{\"error\":\"FS busy\"}");
@@ -992,6 +999,15 @@ static void setupWebServerRoutes() {
     }
     body += "],";
     
+    // Timestamp from last I/O event
+    char timeBuf[12] = "--:--:--";
+    time_t lastEvent = Shared_getLastEventTime();
+    if (lastEvent > 0) {
+      struct tm *ti = localtime(&lastEvent);
+      if (ti) strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", ti);
+    }
+    body += "\"timestamp\":\"" + String(timeBuf) + "\",";
+
     body += "\"relay_outputs\":[";
     // Relay Outputs
     for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
@@ -1551,7 +1567,10 @@ static const char *htmlPage() {
         </div>
         
         <div class="panel" style="margin-top:20px">
-          <h2 style="margin-bottom:15px">Input & Output Status</h2>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+            <h2 style="margin:0">Input &amp; Output Status</h2>
+            <span style="font-size:13px;color:#6b7280;font-weight:600">Last Updated: <strong id="io_timestamp">--:--:--</strong></span>
+          </div>
           
           <div style="margin-bottom:20px">
             <h3 style="font-size:14px;margin-bottom:10px;color:#555">-Digital Inputs</h3>
@@ -2091,6 +2110,28 @@ static const char *htmlPage() {
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Address</label>
                 <textarea id="site_address" rows="3" maxlength="127" oninput="if(this.value.length>127)this.value=this.value.slice(0,127)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
               </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time Zone</label>
+                <select id="site_timezone" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff">
+                  <option value="UTC0">UTC</option>
+                  <option value="IST-5:30">India (IST, UTC+5:30)</option>
+                  <option value="GST-4">Gulf (GST, UTC+4)</option>
+                  <option value="MSK-3">Moscow (MSK, UTC+3)</option>
+                  <option value="EET-2">Eastern Europe (EET, UTC+2)</option>
+                  <option value="CET-1">Central Europe (CET, UTC+1)</option>
+                  <option value="GMT0BST,M3.5.0/1,M10.5.0">UK (GMT/BST)</option>
+                  <option value="WET0WEST,M3.5.0/1,M10.5.0">Portugal (WET)</option>
+                  <option value="EST5EDT,M3.2.0,M11.1.0">US Eastern (EST/EDT)</option>
+                  <option value="CST6CDT,M3.2.0,M11.1.0">US Central (CST/CDT)</option>
+                  <option value="MST7MDT,M3.2.0,M11.1.0">US Mountain (MST/MDT)</option>
+                  <option value="PST8PDT,M3.2.0,M11.1.0">US Pacific (PST/PDT)</option>
+                  <option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia Eastern (AEST)</option>
+                  <option value="SGT-8">Singapore (SGT, UTC+8)</option>
+                  <option value="CST-8">China (CST, UTC+8)</option>
+                  <option value="JST-9">Japan (JST, UTC+9)</option>
+                  <option value="NZST-12NZDT,M9.5.0,M4.1.0/3">New Zealand (NZST)</option>
+                </select>
+              </div>
             </div>
           </div>
           <div id="sys_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
@@ -2314,6 +2355,10 @@ function loadDashboard(){
         });
       }
       document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
+
+      // Update timestamp
+      var tsEl = document.getElementById('io_timestamp');
+      if (tsEl && io.timestamp) tsEl.textContent = io.timestamp;
     }).catch(e=>console.log('IO status load failed', e));
     
     // Clear network loading placeholder
@@ -2852,6 +2897,8 @@ function loadSystemConfig(){
   }).then(cfg=>{
     var sn = document.getElementById('site_name'); if (sn) sn.value = cfg.site_name || '';
     var sa = document.getElementById('site_address'); if (sa) sa.value = cfg.site_address || '';
+    var tz = document.getElementById('site_timezone');
+    if (tz && cfg.timezone) tz.value = cfg.timezone;
   }).catch(e=>{ if (e !== 'auth') console.log('load sysconfig failed', e); });
 }
 
@@ -2859,6 +2906,9 @@ function saveSystemConfig(){
   var p = new URLSearchParams();
   p.append('site_name', document.getElementById('site_name').value.trim());
   p.append('site_address', document.getElementById('site_address').value.trim());
+  var tzEl = document.getElementById('site_timezone');
+  var tzVal = tzEl ? tzEl.value : '';
+  p.append('timezone', tzVal);
   fetch('/api/system-config', { method:'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(d=>{ if (d.success) showStatus('Saved', true); else showStatus(d.error||'Save failed', false); })
     .catch(e=>showStatus('Save failed: '+e.message, false));

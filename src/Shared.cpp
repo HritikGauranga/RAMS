@@ -90,6 +90,7 @@ static GatewaySettings gatewaySettings = {
 
 static int16_t alarmResults[DIGITAL_INPUT_COUNT] = {0};
 static bool    aiAlarmState[ANALOG_INPUT_COUNT]  = {false, false};
+static RelayTriggerSource relayTriggerSource[RELAY_OUTPUT_COUNT] = {RELAY_SOURCE_NONE, RELAY_SOURCE_NONE};
 static time_t  lastEventTime = 0;
 static int16_t inputRegsCompat[4] = {
   (int16_t)STATE_READY,
@@ -813,6 +814,22 @@ time_t Shared_getLastEventTime() {
   t = lastEventTime;
   Shared_unlockState();
   return t;
+}
+
+void Shared_setRelayTriggerSource(size_t index, RelayTriggerSource src) {
+  if (index >= RELAY_OUTPUT_COUNT) return;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return;
+  relayTriggerSource[index] = src;
+  Shared_unlockState();
+}
+
+RelayTriggerSource Shared_getRelayTriggerSource(size_t index) {
+  if (index >= RELAY_OUTPUT_COUNT) return RELAY_SOURCE_NONE;
+  RelayTriggerSource src = RELAY_SOURCE_NONE;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return src;
+  src = relayTriggerSource[index];
+  Shared_unlockState();
+  return src;
 }
 
 // ---------------------------------------------------------------------------

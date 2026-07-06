@@ -201,6 +201,7 @@ static void processAnalogInput(size_t index) {
             if (rcfg.alarm_source == (index + 1)) {
               Shared_setRelayState(r, true);
               relayAlarmHeld[r] = true;
+              Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
               Serial.printf("[AI%d] Activating Relay%d due to alarm\n", index + 1, r + 1);
             }
           }
@@ -242,6 +243,7 @@ static void processAnalogInput(size_t index) {
               if (rcfg.alarm_source == (index + 1)) {
                 Shared_setRelayState(r, false);
                 relayAlarmHeld[r] = false;
+                Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
                 Serial.printf("[AI%d] Deactivating Relay%d - alarm cleared\n", index + 1, r + 1);
               }
             }
@@ -330,6 +332,7 @@ static void processDigitalInput(size_t index) {
             if (rcfg.alarm_source == (index + 3)) {
               Shared_setRelayState(r, true);
               relayAlarmHeld[r] = true;
+              Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
               Serial.printf("[DI%d] Activating Relay%d due to alarm\n", index + 1, r + 1);
             }
           }
@@ -370,6 +373,7 @@ static void processDigitalInput(size_t index) {
             if (rcfg.alarm_source == (index + 3)) {
               Shared_setRelayState(r, false);
               relayAlarmHeld[r] = false;
+              Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
               Serial.printf("[DI%d] Deactivating Relay%d - alarm cleared\n", index + 1, r + 1);
             }
           }

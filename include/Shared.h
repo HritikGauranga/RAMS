@@ -192,6 +192,11 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg);
 bool Shared_isAPModeActive();
 void Shared_setAPModeActive(bool active);
 
+// Relay trigger source tracking
+enum RelayTriggerSource : uint8_t { RELAY_SOURCE_NONE = 0, RELAY_SOURCE_SMS, RELAY_SOURCE_ALARM };
+void Shared_setRelayTriggerSource(size_t index, RelayTriggerSource src);
+RelayTriggerSource Shared_getRelayTriggerSource(size_t index);
+
 // Last I/O event timestamp (set on DI/AI alarm or return)
 void Shared_setLastEventTime();
 time_t Shared_getLastEventTime();

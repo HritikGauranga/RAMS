@@ -247,6 +247,11 @@ static String ipBytesToString(const uint8_t ip[4]) {
   return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
 }
 
+static String buildSMSHeader() {
+  String siteName = readSystemConfigValue("site_name", "Not Set");
+  return "Site: " + siteName;
+}
+
 static String buildSystemStatusSMS() {
   String siteName = readSystemConfigValue("site_name", "Not Set");
   String siteAddress = readSystemConfigValue("site_address", "");
@@ -278,7 +283,8 @@ static String buildSystemStatusSMS() {
 
 static String buildInputStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-  String msg = "[Digital Inputs]\n";
+  String msg = buildSMSHeader() + "\n";
+  msg += "[Digital Inputs]\n";
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};
     Shared_getDigitalInputConfig(i, cfg);
@@ -304,13 +310,18 @@ static String buildInputStatusSMS() {
 
 static String buildRelayStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-  String msg = "[Relay Outputs]\n";
+  String msg = buildSMSHeader() + "\n";
+  msg += "[Relay Outputs]\n";
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
     RelayConfig cfg = {};
     Shared_getRelayConfig(i, cfg);
     String name = String(cfg.name);
     if (name.length() == 0) name = "DO" + String(i + 1);
-    msg += "DO" + String(i + 1) + " (" + name + "): " + (snap.relayState[i] ? "ON" : "OFF");
+    RelayTriggerSource src = Shared_getRelayTriggerSource(i);
+    String prefix = "";
+    if (src == RELAY_SOURCE_SMS) prefix = "S-";
+    else if (src == RELAY_SOURCE_ALARM) prefix = "A-";
+    msg += prefix + "DO" + String(i + 1) + "(" + name + "): " + (snap.relayState[i] ? "ON" : "OFF");
     if (i + 1 < RELAY_OUTPUT_COUNT) msg += "\n";
   }
   return msg;
@@ -368,7 +379,8 @@ static String buildIpStatusSMS() {
   String gateway = ipBytesToString(settings.gatewayIp);
   String dhcp = settings.useDhcp ? "Enabled" : "Disabled";
 
-  String msg = "IP Address: " + ipAddress + "\n";
+  String msg = buildSMSHeader() + "\n";
+  msg += "IP Address: " + ipAddress + "\n";
   msg += "DHCP: " + dhcp + "\n";
   msg += "Gateway: " + gateway;
   return msg;
@@ -480,8 +492,8 @@ static void processRelayCommand(const String &sender, const String &body) {
 
   if (isOn) {
     Shared_setRelayState(relayIdx, true);
+    Shared_setRelayTriggerSource(relayIdx, RELAY_SOURCE_SMS);
     Serial.println("[SMS] Relay " + relayName + " ON");
-    // Cancel any existing pulse first
     for (auto &p : pulseSlots) {
       if (p.relayIdx == (size_t)relayIdx) { p.relayIdx = (size_t)-1; p.offAtMs = 0; }
     }
@@ -489,8 +501,8 @@ static void processRelayCommand(const String &sender, const String &body) {
     if (onTime > 0) schedulePulse(relayIdx, onTime);
   } else if (isOff) {
     Shared_setRelayState(relayIdx, false);
+    Shared_setRelayTriggerSource(relayIdx, RELAY_SOURCE_SMS);
     Serial.println("[SMS] Relay " + relayName + " OFF");
-    // Always cancel any pending pulse on OFF
     for (auto &p : pulseSlots) {
       if (p.relayIdx == (size_t)relayIdx) { p.relayIdx = (size_t)-1; p.offAtMs = 0; }
     }
@@ -778,11 +790,6 @@ bool Modem_init() {
 // ---------------------------------------------------------------------------
 // buildAlarmSMS / buildReturnSMS - structured SMS formatters
 // ---------------------------------------------------------------------------
-static String buildSMSHeader() {
-  String siteName = readSystemConfigValue("site_name", "Not Set");
-  return "Site: " + siteName;
-}
-
 static String alarmTypeName(uint8_t t) {
   switch (t) {
     case 0: return "High";

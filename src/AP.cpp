@@ -1582,11 +1582,10 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Type</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
-                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="di-table">
-                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1600,11 +1599,10 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Value</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Status</th>
-                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="ai-table">
-                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1618,11 +1616,10 @@ static const char *htmlPage() {
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Name</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">State</th>
                   <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Alarm Link</th>
-                  <th style="padding:10px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb">Config</th>
                 </tr>
               </thead>
               <tbody id="relay-table">
-                <tr><td colspan="5" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
+                <tr><td colspan="4" style="padding:10px;text-align:center;color:#999">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -2325,10 +2322,11 @@ function loadDashboard(){
           var status = di.in_alarm ? 'Alarm' : 'Normal';
           var badge = di.in_alarm ? 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
           var type = di.normally_closed ? 'NC' : 'NO';
-          diHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(di.enabled) + '</td></tr>';
+          var rowStyle = di.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
+          diHtml += '<tr style="' + rowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
         });
       }
-      document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      document.getElementById('di-table').innerHTML = diHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
       
       // Analog Inputs
       var aiHtml = '';
@@ -2337,10 +2335,11 @@ function loadDashboard(){
           var aiValue = Number(ai.value);
           var inAlarm = !!ai.in_alarm;
           var aiStatusBadge = inAlarm ? '<span style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Alarm</span>' : '<span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Normal</span>';
-          aiHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + aiStatusBadge + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(ai.enabled) + '</td></tr>';
+          var aiRowStyle = ai.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
+          aiHtml += '<tr style="' + aiRowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + aiStatusBadge + '</td></tr>';
         });
       }
-      document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
+      document.getElementById('ai-table').innerHTML = aiHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No inputs configured</td></tr>';
       
       // Relay Outputs
       var relayHtml = '';
@@ -2351,10 +2350,11 @@ function loadDashboard(){
           var alarmSrcLabels = ['None','AI1','AI2','DI1','DI2','DI3','DI4'];
           var src = relay.alarm_source || 0;
           var linkText = (relay.alarm_control_enabled && src > 0) ? (alarmSrcLabels[src] || 'None') : 'None';
-          relayHtml += '<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(linkText) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + configBadge(relay.enabled) + '</td></tr>';
+          var doRowStyle = relay.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
+          relayHtml += '<tr style="' + doRowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DO' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(relay.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + state + '</span></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(linkText) + '</td></tr>';
         });
       }
-      document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
+      document.getElementById('relay-table').innerHTML = relayHtml || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#999">No outputs configured</td></tr>';
 
       // Update timestamp
       var tsEl = document.getElementById('io_timestamp');

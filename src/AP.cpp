@@ -1484,6 +1484,7 @@ static const char *htmlPage() {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>RAMS Dashboard</title>
+<link rel="icon" type="image/png" href="/Gaurangalogo.png?v=2">
 <style>
   :root{--bg:#f3f6f9;--muted:#6b7280;--primary:#1565c0;--card:#eef7ff}
   *{box-sizing:border-box}

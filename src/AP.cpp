@@ -1148,7 +1148,8 @@ static void setupWebServerRoutes() {
       body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
       body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
       body += "\"return_message\":\"" + escapeJson(String(cfg.return_message)) + "\",";
-      body += "\"selected_contacts\":" + String(cfg.selected_contacts);
+      body += "\"selected_contacts\":" + String(cfg.selected_contacts) + ",";
+      body += "\"offset\":" + String(cfg.offset, 4);
       body += "}";
     }
     body += "]";
@@ -1219,6 +1220,7 @@ static void setupWebServerRoutes() {
       int val = request->getParam("selected_contacts", true)->value().toInt();
       cfg.selected_contacts = (uint8_t)(val & 0xFF);
     }
+    if (request->hasParam("offset", true)) cfg.offset = request->getParam("offset", true)->value().toFloat();
 
     if (!Shared_saveAnalogInputConfig(idx, cfg)) {
       request->send(500, "application/json", "{\"error\":\"Save failed\"}");
@@ -1852,6 +1854,20 @@ static const char *htmlPage() {
           </div>
         </div>
               
+              <!-- Offset Section -->
+              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #795548">
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Value Offset</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                  <div>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Offset</label>
+                    <input type="number" id="ai_offset" step="0.01"
+                    oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
+                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <div style="font-size:11px;color:#999;margin-top:4px">Added to scaled value (positive or negative). Affects dashboard, alarms &amp; SMS.</div>
+                  </div>
+                </div>
+              </div>
+              
               <!-- Alarm Type Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Type</h3>
@@ -2008,7 +2024,7 @@ static const char *htmlPage() {
                     <input type="checkbox" id="do_sms_control" style="width:18px;height:18px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable SMS Control</label>
                   </div>
-                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Allows remote control: DO1 ON, DO1 OFF, DO1 PULSE 30</div>
+                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Allows remote control via SMS commands</div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="do_alarm_control" onchange="updateDOFieldsState()" style="width:18px;height:18px;cursor:pointer">
                     <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Alarm Control</label>
@@ -2039,7 +2055,7 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Allow Contact to Operate via SMS Command</label>
                   <div id="relay_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
                   <div style="color:#999">(no recipients configured)</div>
                   </div>
@@ -2171,7 +2187,7 @@ static const char *htmlPage() {
           </div>
 
           <!-- Status Message (Heartbeat) Form -->
-          <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #1565c0">
+          <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #fdec02">
             <h3 style="font-size:14px;font-weight:600;margin:0 0 4px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Status Message</h3>
             <div style="font-size:12px;color:#999;margin-bottom:14px">Automatically sends a system status SMS on a schedule (same as GET STATUS response).</div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -2718,6 +2734,7 @@ function switchAI(index){
   setAIEngineeringUnit(cfg.engineering_unit || 'Liters');
   document.getElementById('ai_scale_low').value = cfg.scale_low || 0;
   document.getElementById('ai_scale_high').value = cfg.scale_high || 100;
+  document.getElementById('ai_offset').value = cfg.offset || 0;
   
   // Set alarm type radio button
   eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r) { r.checked = false; });
@@ -2782,7 +2799,7 @@ function updateAIThresholdHints(){
 
 function updateAIFieldsState(){
   var enabled = document.getElementById('ai_enabled').checked;
-  var fields = ['ai_name','ai_unit_select','ai_unit_custom','ai_scale_low','ai_scale_high','ai_set_point','ai_reset_point','ai_tta','ai_ttr','ai_alarm_sms','ai_return_sms','ai_alarm_msg','ai_return_msg'];
+  var fields = ['ai_name','ai_unit_select','ai_unit_custom','ai_scale_low','ai_scale_high','ai_offset','ai_set_point','ai_reset_point','ai_tta','ai_ttr','ai_alarm_sms','ai_return_sms','ai_alarm_msg','ai_return_msg'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
   eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r){ r.disabled=!enabled; });
   var ai_sel = document.getElementById('ai_recipients_select');
@@ -2798,6 +2815,7 @@ function saveAIConfig(){
   form_data.append('engineering_unit', getAIEngineeringUnit());
   form_data.append('scale_low', document.getElementById('ai_scale_low').value);
   form_data.append('scale_high', document.getElementById('ai_scale_high').value);
+  form_data.append('offset', document.getElementById('ai_offset').value || '0');
   
   // Get alarm type from radio buttons
   var alarmType = 0;
@@ -2852,7 +2870,7 @@ form_data.append('selected_contacts', bitmask);
     .then(r=>r.json())
     .then(d=>{ 
       if(d.success) {
-        ai_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),engineering_unit:form_data.get('engineering_unit'),scale_low:parseFloat(form_data.get('scale_low')),scale_high:parseFloat(form_data.get('scale_high')),alarm_type:alarmType,set_point:parseFloat(form_data.get('set_point')),reset_point:parseFloat(form_data.get('reset_point')),tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:bitmask};
+        ai_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),engineering_unit:form_data.get('engineering_unit'),scale_low:parseFloat(form_data.get('scale_low')),scale_high:parseFloat(form_data.get('scale_high')),offset:parseFloat(form_data.get('offset')),alarm_type:alarmType,set_point:parseFloat(form_data.get('set_point')),reset_point:parseFloat(form_data.get('reset_point')),tta_ms:parseInt(form_data.get('tta_ms')),ttr_ms:parseInt(form_data.get('ttr_ms')),alarm_sms_enabled:form_data.get('alarm_sms_enabled')==='1',return_sms_enabled:form_data.get('return_sms_enabled')==='1',alarm_message:form_data.get('alarm_message'),return_message:form_data.get('return_message'),selected_contacts:bitmask};
         status_el.textContent = 'AI' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {

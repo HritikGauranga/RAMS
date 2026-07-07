@@ -53,7 +53,7 @@ struct IOConfigStoreV2 {
   } relay[RELAY_OUTPUT_COUNT];
 };
 
-static constexpr uint16_t IO_CONFIG_VERSION = 3;
+static constexpr uint16_t IO_CONFIG_VERSION = 4;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 

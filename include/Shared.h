@@ -79,6 +79,7 @@ struct AnalogInputConfig {
   char alarm_message[64];
   char return_message[64];
   uint8_t selected_contacts;
+  float offset;               // Added to engineering value after 4-20mA scaling
 };
 
 struct RelayConfig {

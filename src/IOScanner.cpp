@@ -79,7 +79,7 @@ static float currentToEngineering(float current, const AnalogInputConfig &cfg) {
   // Linear scaling: 4mA = scale_low, 20mA = scale_high
   float range = CURRENT_MAX - CURRENT_MIN;
   float normalized = (current - CURRENT_MIN) / range;
-  return cfg.scale_low + normalized * (cfg.scale_high - cfg.scale_low);
+  return cfg.scale_low + normalized * (cfg.scale_high - cfg.scale_low) + cfg.offset;
 }
 
 // Read analog input with averaging

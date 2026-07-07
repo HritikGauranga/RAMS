@@ -529,6 +529,24 @@ static void processRelayCommand(const String &sender, const String &body) {
     return;
   }
 
+  // Check sender is in this relay's selected_contacts
+  ContactList rec = {};
+  bool senderAllowed = false;
+  if (Shared_getRecipientContacts(rec)) {
+    for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+      if (!(cfg.selected_contacts & (1 << i))) continue;
+      if (!rec.items[i].enabled) continue;
+      String num = String(rec.items[i].number);
+      if (sender == num || sender == "+" + num) { senderAllowed = true; break; }
+      if (num.startsWith("+")) num = num.substring(1);
+      if (sender == num || sender == "+" + num) { senderAllowed = true; break; }
+    }
+  }
+  if (!senderAllowed) {
+    Serial.println("[SMS] Sender not authorized for relay " + relayName + ": " + sender);
+    return;
+  }
+
   bool isOn = state.equalsIgnoreCase("on");
   bool isOff = state.equalsIgnoreCase("off");
 

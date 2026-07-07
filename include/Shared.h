@@ -170,6 +170,23 @@ constexpr size_t DI_SMS_QUEUE_DEPTH = 4;
 bool Shared_postDIPendingSMS(size_t index, bool isAlarm);
 bool Shared_takeDIPendingSMS(DIPendingSMS &out);
 
+// Heartbeat (Status Message) config
+struct HeartbeatConfig {
+  bool     enabled;
+  uint8_t  selected_contacts; // bitmask
+  uint8_t  frequency;         // 0=once_a_day, 1=twice_a_day, 2=once_a_week
+  uint8_t  days_mask;         // bit0=daily, bit1=Mon...bit7=Sun
+  uint8_t  time1_h;
+  uint8_t  time1_m;
+  uint8_t  time2_h;
+  uint8_t  time2_m;
+};
+bool Shared_getHeartbeatConfig(HeartbeatConfig &out);
+bool Shared_saveHeartbeatConfig(const HeartbeatConfig &cfg);
+// Called periodically by Modem task; posts a heartbeat SMS if schedule matches
+bool Shared_tickHeartbeat();
+bool Shared_takeHeartbeatSMS(); // returns true if a heartbeat SMS is pending
+
 // Device model access
 SystemSnapshot Shared_getSnapshot();
 bool Shared_writeDigitalInput(size_t index, int16_t value);

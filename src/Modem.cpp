@@ -1016,6 +1016,30 @@ void Modem_task(void *pvParameters) {
       }
     }
 
+    // Heartbeat (Status Message) check
+    if (modemReady && Shared_tickHeartbeat()) {
+      HeartbeatConfig hbCfg = {};
+      Shared_getHeartbeatConfig(hbCfg);
+      ContactList rec = {};
+      if (Shared_getRecipientContacts(rec) && rec.count > 0) {
+        String msg = buildSystemStatusSMS();
+        Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
+        for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+          if (!rec.items[i].enabled) continue;
+          if (!(hbCfg.selected_contacts & (1 << i))) continue;
+          String number = String(rec.items[i].number);
+          if (number.length() == 0) continue;
+          String normalized;
+          if (!normalizePhoneNumber(number, normalized)) continue;
+          if (!modemReady) break;
+          sendSMS(normalized, msg);
+        }
+        Shared_writeInputRegister(MODEM_STATUS_REGISTER,
+          modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
+        Serial.println("[HEARTBEAT] Status SMS dispatched");
+      }
+    }
+
     // Drain DI SMS queue (alarm and return entries)
     DIPendingSMS diPending = {};
     if (Shared_takeDIPendingSMS(diPending)) {

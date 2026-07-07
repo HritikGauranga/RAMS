@@ -318,7 +318,7 @@ void Shared_init() {
 
   loadIOConfigFromFile();
 
-  // Load persisted phone list / contacts if present. Prefer JSON contacts file.
+  // Load persisted phone list
   if (Shared_lockFileSystem(pdMS_TO_TICKS(1000))) {
     bool loadedFromJson = false;
     if (LittleFS.exists("/contacts.json")) {
@@ -905,4 +905,132 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg) {
   
   Serial.println("[SIM] SIM configuration saved");
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat (Status Message) config
+// ---------------------------------------------------------------------------
+static HeartbeatConfig heartbeatConfig = {};
+static bool heartbeatPending = false;
+static uint8_t lastHeartbeatMinute = 0xFF; // sentinel: no send yet this minute
+
+bool Shared_getHeartbeatConfig(HeartbeatConfig &out) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(500))) return false;
+  if (LittleFS.exists("/heartbeat.json")) {
+    File f = LittleFS.open("/heartbeat.json", "r");
+    if (f) {
+      String json = f.readString();
+      f.close();
+      Shared_unlockFileSystem();
+      HeartbeatConfig c = {};
+      auto readUint8 = [&](const char *key) -> uint8_t {
+        String pat = String('"') + key + '"';
+        int ki = json.indexOf(pat);
+        if (ki < 0) return 0;
+        int ci = json.indexOf(':', ki + pat.length());
+        if (ci < 0) return 0;
+        return (uint8_t)json.substring(ci + 1).toInt();
+      };
+      auto readBool = [&](const char *key) -> bool {
+        String pat = String('"') + key + '"';
+        int ki = json.indexOf(pat);
+        if (ki < 0) return false;
+        int ci = json.indexOf(':', ki + pat.length());
+        if (ci < 0) return false;
+        String v = json.substring(ci + 1);
+        v.trim();
+        return v.startsWith("true");
+      };
+      c.enabled           = readBool("enabled");
+      c.selected_contacts = readUint8("selected_contacts");
+      c.frequency         = readUint8("frequency");
+      c.days_mask         = readUint8("days_mask");
+      c.time1_h           = readUint8("time1_h");
+      c.time1_m           = readUint8("time1_m");
+      c.time2_h           = readUint8("time2_h");
+      c.time2_m           = readUint8("time2_m");
+      out = c;
+      if (Shared_lockState(pdMS_TO_TICKS(50))) { heartbeatConfig = c; Shared_unlockState(); }
+      return true;
+    }
+  }
+  Shared_unlockFileSystem();
+  out = heartbeatConfig;
+  return true;
+}
+
+bool Shared_saveHeartbeatConfig(const HeartbeatConfig &cfg) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  File f = LittleFS.open("/heartbeat.json", "w");
+  if (!f) { Shared_unlockFileSystem(); return false; }
+  f.printf("{\"enabled\":%s,\"selected_contacts\":%u,\"frequency\":%u,\"days_mask\":%u,"
+           "\"time1_h\":%u,\"time1_m\":%u,\"time2_h\":%u,\"time2_m\":%u}",
+           cfg.enabled ? "true" : "false",
+           cfg.selected_contacts, cfg.frequency, cfg.days_mask,
+           cfg.time1_h, cfg.time1_m, cfg.time2_h, cfg.time2_m);
+  f.close();
+  Shared_unlockFileSystem();
+  if (Shared_lockState(pdMS_TO_TICKS(50))) { heartbeatConfig = cfg; Shared_unlockState(); }
+  Serial.println("[HEARTBEAT] Config saved");
+  return true;
+}
+
+bool Shared_tickHeartbeat() {
+  HeartbeatConfig cfg = {};
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  cfg = heartbeatConfig;
+  Shared_unlockState();
+
+  if (!cfg.enabled || cfg.selected_contacts == 0) return false;
+
+  time_t now;
+  time(&now);
+  struct tm *ti = localtime(&now);
+  if (!ti) return false;
+
+  // tm_wday: 0=Sun,1=Mon...6=Sat  -> map to days_mask bit1=Mon...bit7=Sun, bit0=daily
+  // days_mask bit0 = daily, bit1=Mon, bit2=Tue, bit3=Wed, bit4=Thu, bit5=Fri, bit6=Sat, bit7=Sun
+  uint8_t wdayBit;
+  if (ti->tm_wday == 0) wdayBit = (1 << 7); // Sunday
+  else                  wdayBit = (1 << ti->tm_wday); // Mon=bit1 ... Sat=bit6
+
+  bool dayMatch = (cfg.days_mask & 0x01) || (cfg.days_mask & wdayBit); // daily or specific day
+  if (!dayMatch) return false;
+
+  // For once_a_week (freq==2), only fire on the single selected day
+  // days_mask for once_a_week should have exactly one weekday bit set (no daily bit)
+
+  uint8_t h = (uint8_t)ti->tm_hour;
+  uint8_t m = (uint8_t)ti->tm_min;
+  // Encode current time as a single byte key to avoid re-firing within same minute
+  uint16_t nowKey = (uint16_t)(h * 60 + m);
+
+  bool fire = false;
+  if (h == cfg.time1_h && m == cfg.time1_m) fire = true;
+  if (cfg.frequency == 1 && h == cfg.time2_h && m == cfg.time2_m) fire = true; // twice a day
+
+  if (!fire) {
+    if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+    lastHeartbeatMinute = 0xFF; // reset so next matching minute fires
+    Shared_unlockState();
+    return false;
+  }
+
+  // Prevent firing more than once per minute
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  bool alreadyFired = (lastHeartbeatMinute == (uint8_t)(nowKey & 0xFF));
+  if (!alreadyFired) {
+    lastHeartbeatMinute = (uint8_t)(nowKey & 0xFF);
+    heartbeatPending = true;
+  }
+  Shared_unlockState();
+  return !alreadyFired;
+}
+
+bool Shared_takeHeartbeatSMS() {
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  bool pending = heartbeatPending;
+  heartbeatPending = false;
+  Shared_unlockState();
+  return pending;
 }

@@ -1353,6 +1353,39 @@ static void setupWebServerRoutes() {
     request->send(200, "application/json", "{\"success\":true}");
   });
 
+  // Heartbeat (Status Message) config endpoints
+  server->on("/api/heartbeat-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
+    HeartbeatConfig cfg = {};
+    Shared_getHeartbeatConfig(cfg);
+    String body = "{";
+    body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
+    body += "\"selected_contacts\":" + String(cfg.selected_contacts) + ",";
+    body += "\"frequency\":" + String(cfg.frequency) + ",";
+    body += "\"days_mask\":" + String(cfg.days_mask) + ",";
+    body += "\"time1_h\":" + String(cfg.time1_h) + ",";
+    body += "\"time1_m\":" + String(cfg.time1_m) + ",";
+    body += "\"time2_h\":" + String(cfg.time2_h) + ",";
+    body += "\"time2_m\":" + String(cfg.time2_m);
+    body += "}";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/heartbeat-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
+    HeartbeatConfig cfg = {};
+    cfg.enabled           = request->hasParam("enabled", true) && request->getParam("enabled", true)->value() == "1";
+    cfg.selected_contacts = request->hasParam("selected_contacts", true) ? (uint8_t)request->getParam("selected_contacts", true)->value().toInt() : 0;
+    cfg.frequency         = request->hasParam("frequency", true) ? (uint8_t)request->getParam("frequency", true)->value().toInt() : 0;
+    cfg.days_mask         = request->hasParam("days_mask", true) ? (uint8_t)request->getParam("days_mask", true)->value().toInt() : 0;
+    cfg.time1_h           = request->hasParam("time1_h", true) ? (uint8_t)request->getParam("time1_h", true)->value().toInt() : 0;
+    cfg.time1_m           = request->hasParam("time1_m", true) ? (uint8_t)request->getParam("time1_m", true)->value().toInt() : 0;
+    cfg.time2_h           = request->hasParam("time2_h", true) ? (uint8_t)request->getParam("time2_h", true)->value().toInt() : 0;
+    cfg.time2_m           = request->hasParam("time2_m", true) ? (uint8_t)request->getParam("time2_m", true)->value().toInt() : 0;
+    if (!Shared_saveHeartbeatConfig(cfg)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+
   // Signal strength endpoint
   server->on("/api/signal-strength", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
@@ -2136,6 +2169,54 @@ static const char *htmlPage() {
           <div style="display:flex;gap:10px;margin-top:8px">
             <button class="btn primary" onclick="saveSystemConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Site Details</button>
           </div>
+
+          <!-- Status Message (Heartbeat) Form -->
+          <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #1565c0">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 4px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Status Message</h3>
+            <div style="font-size:12px;color:#999;margin-bottom:14px">Automatically sends a system status SMS on a schedule (same as GET STATUS response).</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+              <input type="checkbox" id="hb_enabled" style="width:18px;height:18px;cursor:pointer">
+              <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Status Message</label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SMS Contact</label>
+                <div id="hb_contacts" style="padding:8px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;min-height:60px;font-size:13px">
+                  <div style="color:#999">(no recipients configured)</div>
+                </div>
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Frequency</label>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                    <input type="radio" name="hb_freq" value="0" style="width:16px;height:16px"> Once a Day
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                    <input type="radio" name="hb_freq" value="1" style="width:16px;height:16px"> Twice a Day
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                    <input type="radio" name="hb_freq" value="2" style="width:16px;height:16px"> Once a Week
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Day(s)</label>
+                <div id="hb_days" style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px"></div>
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time-1</label>
+                <input type="time" id="hb_time1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <div id="hb_time2_wrap" style="margin-top:12px;display:none">
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time-2</label>
+                  <input type="time" id="hb_time2" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="hb_status" style="display:none;margin-top:12px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px;margin-top:12px">
+            <button class="btn primary" onclick="saveHeartbeatConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Status Message</button>
+          </div>
         </div>
       </div>
       </div>
@@ -2195,7 +2276,7 @@ function switchToTab(tabName) {
   if (tabName === 'digital') loadDIConfig();
   if (tabName === 'analog') loadAIConfig();
   if (tabName === 'relays') loadDOConfig();
-  if (tabName === 'sysconfig') loadSystemConfig();
+  if (tabName === 'sysconfig') { loadSystemConfig(); loadHeartbeatConfig(); }
   if (tabName === 'phones' && typeof loadPhones === 'function') loadPhones();
   if (tabName === 'network' && typeof loadNetworkCfg === 'function') { loadNetworkCfg(); loadSIMConfig(); }
 }
@@ -2539,6 +2620,15 @@ function loadRecipients(){
         }
       });
       refreshRecipientSelections();
+      // Refresh heartbeat contacts if sysconfig tab is visible
+      var hbSel = document.getElementById('hb_contacts');
+      if (hbSel) {
+        var hbMask = 0;
+        eachNode(document.querySelectorAll('.hb-contact-cb:checked'), function(cb) {
+          hbMask |= (1 << parseInt(cb.value, 10));
+        });
+        populateHbContacts(hbMask);
+      }
     }
   }).catch(e=>{ if(e !== 'auth') console.log('recipients load failed', e); });
 }
@@ -3081,6 +3171,199 @@ function showSmallStatus(elementId, message, isSuccess){
   el.style.borderLeft = '4px solid ' + (isSuccess ? '#28a745' : '#dc3545');
   el.textContent = message;
   setTimeout(function(){ el.style.display = 'none'; }, 4000);
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat (Status Message)
+// ---------------------------------------------------------------------------
+var HB_DAYS = [
+  {label:'Daily', bit:0},
+  {label:'Mon',   bit:1},
+  {label:'Tue',   bit:2},
+  {label:'Wed',   bit:3},
+  {label:'Thu',   bit:4},
+  {label:'Fri',   bit:5},
+  {label:'Sat',   bit:6},
+  {label:'Sun',   bit:7}
+];
+
+function buildHbDays() {
+  var container = document.getElementById('hb_days');
+  if (!container) return;
+  container.innerHTML = '';
+  HB_DAYS.forEach(function(d) {
+    var lbl = document.createElement('label');
+    lbl.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;white-space:nowrap';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'hb-day-cb';
+    cb.value = d.bit;
+    cb.style.cssText = 'width:15px;height:15px';
+    cb.addEventListener('change', enforceHbDayRule);
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(d.label));
+    container.appendChild(lbl);
+  });
+}
+
+function enforceHbDayRule() {
+  var freq = getHbFreq();
+  var dailyCb = null;
+  eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
+    if (parseInt(cb.value, 10) === 0) dailyCb = cb;
+  });
+
+  // If Daily (bit0) was just changed, select/deselect all weekday checkboxes
+  if (this === dailyCb) {
+    var checked = dailyCb.checked;
+    eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
+      if (parseInt(cb.value, 10) !== 0) cb.checked = checked;
+    });
+    return;
+  }
+
+  // If a weekday was unchecked, also uncheck Daily
+  if (!this.checked && dailyCb) dailyCb.checked = false;
+
+  // If all weekdays are now checked, also check Daily
+  if (this.checked && dailyCb) {
+    var allChecked = true;
+    eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
+      if (parseInt(cb.value, 10) !== 0 && !cb.checked) allChecked = false;
+    });
+    if (allChecked) dailyCb.checked = true;
+  }
+
+  // For once_a_week: enforce single selection (no Daily allowed)
+  if (freq === 2) {
+    var lastChecked = this;
+    eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
+      if (cb !== lastChecked) cb.checked = false;
+    });
+  }
+}
+
+function getHbFreq() {
+  var radios = document.querySelectorAll('input[name="hb_freq"]');
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) return parseInt(radios[i].value, 10);
+  }
+  return 0;
+}
+
+function updateHbFreqUI() {
+  var freq = getHbFreq();
+  var t2 = document.getElementById('hb_time2_wrap');
+  if (t2) t2.style.display = freq === 1 ? 'block' : 'none';
+  // For once_a_week: enforce single day selection
+  if (freq === 2) {
+    var cbs = document.querySelectorAll('.hb-day-cb');
+    var checkedCount = 0;
+    eachNode(cbs, function(cb) { if (cb.checked) checkedCount++; });
+    if (checkedCount > 1) {
+      // keep only first checked
+      var kept = false;
+      eachNode(cbs, function(cb) {
+        if (cb.checked) { if (kept) cb.checked = false; else kept = true; }
+      });
+    }
+  }
+}
+
+function loadHeartbeatConfig() {
+  buildHbDays();
+  // Attach freq change listeners
+  eachNode(document.querySelectorAll('input[name="hb_freq"]'), function(r) {
+    r.addEventListener('change', updateHbFreqUI);
+  });
+
+  fetch('/api/heartbeat-config').then(function(r) { return r.json(); }).then(function(cfg) {
+    var enEl = document.getElementById('hb_enabled');
+    if (enEl) enEl.checked = !!cfg.enabled;
+
+    // Set frequency radio
+    eachNode(document.querySelectorAll('input[name="hb_freq"]'), function(r) {
+      r.checked = (parseInt(r.value, 10) === (cfg.frequency || 0));
+    });
+
+    // Set days checkboxes
+    eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
+      var bit = parseInt(cb.value, 10);
+      cb.checked = !!((cfg.days_mask || 0) & (1 << bit));
+    });
+
+    // Set times
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var t1 = document.getElementById('hb_time1');
+    if (t1) t1.value = pad(cfg.time1_h || 0) + ':' + pad(cfg.time1_m || 0);
+    var t2 = document.getElementById('hb_time2');
+    if (t2) t2.value = pad(cfg.time2_h || 0) + ':' + pad(cfg.time2_m || 0);
+
+    updateHbFreqUI();
+
+    // Populate contacts
+    populateHbContacts(cfg.selected_contacts || 0);
+  }).catch(function(e) { console.log('heartbeat config load failed', e); });
+}
+
+function populateHbContacts(selectedMask) {
+  var container = document.getElementById('hb_contacts');
+  if (!container) return;
+  if (!event_recipients || event_recipients.length === 0) {
+    container.innerHTML = '<div style="color:#999">(no recipients configured)</div>';
+    return;
+  }
+  container.innerHTML = '';
+  event_recipients.forEach(function(r, idx) {
+    if (!r.enabled) return;
+    var lbl = document.createElement('label');
+    lbl.style.cssText = 'display:block;margin-bottom:6px;cursor:pointer;font-size:13px';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'hb-contact-cb';
+    cb.value = idx;
+    cb.style.marginRight = '8px';
+    cb.checked = !!((selectedMask) & (1 << idx));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode((r.name || '-') + ' (' + (r.number || '-') + ')'));
+    container.appendChild(lbl);
+  });
+}
+
+function saveHeartbeatConfig() {
+  var enabled = document.getElementById('hb_enabled').checked;
+  var freq = getHbFreq();
+
+  var daysMask = 0;
+  eachNode(document.querySelectorAll('.hb-day-cb:checked'), function(cb) {
+    daysMask |= (1 << parseInt(cb.value, 10));
+  });
+
+  var contactsMask = 0;
+  eachNode(document.querySelectorAll('.hb-contact-cb:checked'), function(cb) {
+    contactsMask |= (1 << parseInt(cb.value, 10));
+  });
+
+  var t1 = (document.getElementById('hb_time1').value || '00:00').split(':');
+  var t2 = (document.getElementById('hb_time2').value || '00:00').split(':');
+
+  var p = new URLSearchParams();
+  p.append('enabled', enabled ? '1' : '0');
+  p.append('selected_contacts', contactsMask);
+  p.append('frequency', freq);
+  p.append('days_mask', daysMask);
+  p.append('time1_h', parseInt(t1[0], 10) || 0);
+  p.append('time1_m', parseInt(t1[1], 10) || 0);
+  p.append('time2_h', parseInt(t2[0], 10) || 0);
+  p.append('time2_m', parseInt(t2[1], 10) || 0);
+
+  fetch('/api/heartbeat-config', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success) showSmallStatus('hb_status', 'Status Message saved', true);
+      else showSmallStatus('hb_status', d.error || 'Save failed', false);
+    })
+    .catch(function(e) { showSmallStatus('hb_status', 'Save failed: ' + e.message, false); });
 }
 </script>
 </body>

@@ -156,9 +156,8 @@ struct HeartbeatConfig {
 };
 bool Shared_getHeartbeatConfig(HeartbeatConfig &out);
 bool Shared_saveHeartbeatConfig(const HeartbeatConfig &cfg);
-// Called periodically by Modem task; posts a heartbeat SMS if schedule matches
+// Called periodically by Modem task; returns true once per scheduled minute
 bool Shared_tickHeartbeat();
-bool Shared_takeHeartbeatSMS(); // returns true if a heartbeat SMS is pending
 
 // Device model access
 SystemSnapshot Shared_getSnapshot();

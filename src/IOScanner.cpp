@@ -10,8 +10,10 @@
 // Analog Inputs (ADC1 only - avoid ADC2 as it conflicts with WiFi)
 constexpr int AI_PIN[ANALOG_INPUT_COUNT] = {34, 35};  // GPIO34=ADC1_CH6, GPIO35=ADC1_CH7
 
-// Digital Inputs (switches connected to 3.3V via 1k resistor, no pull-up needed)
-constexpr int DI_PIN[DIGITAL_INPUT_COUNT] = {26, 27, 0, 0};  // DI1=GPIO26, DI2=GPIO27, DI3/4=unused for now
+// Digital Inputs (DI3/DI4 not yet wired — set to 0 to mark as unassigned)
+// WARNING: DI3 and DI4 are configurable in the UI but will always read Normal
+// at runtime until real GPIO pins are assigned here.
+constexpr int DI_PIN[DIGITAL_INPUT_COUNT] = {26, 27, 0, 0};  // DI1=GPIO26, DI2=GPIO27, DI3/4=unassigned
 
 // Digital Outputs (Relay mock LEDs)
 constexpr int DO_PIN[RELAY_OUTPUT_COUNT] = {25, 13};  // DO1=GPIO25, DO2=GPIO13
@@ -251,7 +253,11 @@ static void processAnalogInput(size_t index) {
 // Process digital input
 static void processDigitalInput(size_t index) {
   if (index >= DIGITAL_INPUT_COUNT) return;
-  if (DI_PIN[index] == 0) return;  // Skip unconfigured inputs
+  if (DI_PIN[index] == 0) {
+    // No GPIO assigned — force Normal so dashboard doesn't show stale alarm state
+    Shared_writeDigitalInput(index, 0);
+    return;
+  }
   
   DigitalInputConfig cfg = {};
   if (!Shared_getDigitalInputConfig(index, cfg)) return;

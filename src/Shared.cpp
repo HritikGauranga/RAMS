@@ -865,9 +865,12 @@ bool Shared_tickHeartbeat() {
   if (cfg.frequency == 1 && h == cfg.time2_h && m == cfg.time2_m) fire = true;
 
   if (!fire) {
-    if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-    lastHeartbeatMinute = 0xFFFF;
-    Shared_unlockState();
+    // Reset unconditionally — if lock fails we accept the stale value rather
+    // than skipping the reset and potentially suppressing the next heartbeat.
+    if (Shared_lockState(pdMS_TO_TICKS(50))) {
+      lastHeartbeatMinute = 0xFFFF;
+      Shared_unlockState();
+    }
     return false;
   }
 

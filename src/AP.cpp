@@ -910,11 +910,11 @@ static void setupWebServerRoutes() {
     body += "],";
     
     // Timestamp from last I/O event
-    char timeBuf[12] = "--:--:--";
+    char timeBuf[20] = "--";
     time_t lastEvent = Shared_getLastEventTime();
     if (lastEvent > 0) {
       struct tm *ti = localtime(&lastEvent);
-      if (ti) strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", ti);
+      if (ti) strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", ti);
     }
     body += "\"timestamp\":\"" + String(timeBuf) + "\",";
 
@@ -1515,7 +1515,7 @@ static const char *htmlPage() {
         <div class="panel" style="margin-top:20px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
             <h2 style="margin:0">Input &amp; Output Status</h2>
-            <span style="font-size:13px;color:#6b7280;font-weight:600">Last Updated on: <strong id="io_timestamp">--:--:--</strong></span>
+            <span style="font-size:14px;color:#6b7280;font-weight:600">Last Updated on: <strong id="io_timestamp">--</strong></span>
           </div>
           
           <div style="margin-bottom:20px">

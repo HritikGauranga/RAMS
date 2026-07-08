@@ -50,16 +50,9 @@ static GatewaySettings gatewaySettings = {
   80               // httpPort default
 };
 
-static int16_t alarmResults[DIGITAL_INPUT_COUNT] = {0};
 static bool    aiAlarmState[ANALOG_INPUT_COUNT]  = {false, false};
 static RelayTriggerSource relayTriggerSource[RELAY_OUTPUT_COUNT] = {RELAY_SOURCE_NONE, RELAY_SOURCE_NONE};
 static time_t  lastEventTime = 0;
-static int16_t inputRegsCompat[4] = {
-  (int16_t)STATE_READY,
-  (int16_t)STATE_IDLE,
-  (int16_t)STATE_IDLE,
-  (int16_t)STATE_IDLE
-};
 
 // ---------------------------------------------------------------------------
 // Utility
@@ -532,14 +525,6 @@ bool Shared_getRecipientContacts(ContactList &out) {
   return true;
 }
 
-bool Shared_writeAlarmResult(size_t index, int16_t value) {
-  if (index >= DIGITAL_INPUT_COUNT) return false;
-  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  alarmResults[index] = value;
-  Shared_unlockState();
-  return true;
-}
-
 bool Shared_setAIAlarmState(size_t index, bool inAlarm) {
   if (index >= ANALOG_INPUT_COUNT) return false;
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
@@ -621,14 +606,6 @@ bool Shared_takeDIPendingSMS(DIPendingSMS &out) {
   out = diPendingQueue[diQueueHead];
   diPendingQueue[diQueueHead].valid = false;
   diQueueHead = (diQueueHead + 1) % DI_QUEUE_SIZE;
-  Shared_unlockState();
-  return true;
-}
-
-bool Shared_writeInputRegister(size_t index, int16_t value) {
-  if (index >= 4) return false;
-  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  inputRegsCompat[index] = value;
   Shared_unlockState();
   return true;
 }
@@ -791,7 +768,6 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg) {
 // Heartbeat (Status Message) config
 // ---------------------------------------------------------------------------
 static HeartbeatConfig heartbeatConfig = {};
-static bool heartbeatPending = false;
 static uint16_t lastHeartbeatMinute = 0xFFFF;
 
 bool Shared_getHeartbeatConfig(HeartbeatConfig &out) {
@@ -899,16 +875,8 @@ bool Shared_tickHeartbeat() {
   bool alreadyFired = (lastHeartbeatMinute == nowKey);
   if (!alreadyFired) {
     lastHeartbeatMinute = nowKey;
-    heartbeatPending = true;
   }
   Shared_unlockState();
   return !alreadyFired;
 }
 
-bool Shared_takeHeartbeatSMS() {
-  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  bool pending = heartbeatPending;
-  heartbeatPending = false;
-  Shared_unlockState();
-  return pending;
-}

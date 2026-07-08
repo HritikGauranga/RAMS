@@ -39,12 +39,6 @@ static String readSerialATResponse(unsigned long timeout) {
   return response;
 }
 
-static void updateModemState(int16_t modemState, int16_t simState, int16_t networkState) {
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER,   modemState);
-  Shared_writeInputRegister(SIM_STATUS_REGISTER,     simState);
-  Shared_writeInputRegister(NETWORK_STATUS_REGISTER, networkState);
-}
-
 static void setModemInitStatusLED(bool ready) {
   digitalWrite(MODEM_INIT_STATUS_PIN, ready ? HIGH : LOW);
 }
@@ -667,8 +661,6 @@ static bool modemSimReady() {
   String sim   = sendAT("AT+CPIN?", 2000);
   bool   ready = sim.indexOf("READY") != -1;
   simMissingLatched = (sim.indexOf("SIM not inserted") != -1);
-  Shared_writeInputRegister(SIM_STATUS_REGISTER,
-    ready ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
   return ready;
 }
 
@@ -676,14 +668,12 @@ static bool waitForNetwork() {
   for (int i = 0; i < 10; ++i) {
     String res = sendAT("AT+CREG?", 2000);
     if (res.indexOf("0,1") != -1 || res.indexOf("0,5") != -1) {
-      Shared_writeInputRegister(NETWORK_STATUS_REGISTER, (int16_t)STATE_READY);
       Serial.println("[MODEM] Network registered");
       return true;
     }
     Serial.printf("[MODEM] Waiting for network... (%d/10)\n", i + 1);
     delay(2000);
   }
-  Shared_writeInputRegister(NETWORK_STATUS_REGISTER, (int16_t)STATE_ERROR);
   Serial.println("[MODEM] Network FAILED");
   return false;
 }
@@ -710,7 +700,6 @@ static bool sendSMS(const String &number, const String &message) {
     Serial.println("[SMS] Network lost - marking modem not ready");
     setModemReady(false);
     consecutiveModemHealthFailures = 0;
-    Shared_writeInputRegister(NETWORK_STATUS_REGISTER, (int16_t)STATE_ERROR);
     return false;
   }
 
@@ -802,7 +791,6 @@ static void initModem() {
   delay(500);
 
   setModemInitStatusLED(false);
-  updateModemState((int16_t)STATE_BUSY, (int16_t)STATE_IDLE, (int16_t)STATE_IDLE);
 
   Serial.println("\n=== Initializing 4G Modem (EC200U) ===");
   modemPowerOn();
@@ -816,7 +804,6 @@ static void initModem() {
   if (res.indexOf("OK") == -1) {
     setModemReady(false);
     simMissingLatched = false;
-    updateModemState((int16_t)STATE_ERROR, (int16_t)STATE_IDLE, (int16_t)STATE_IDLE);
     Serial.println("[MODEM] No modem response after power ON");
     return;
   }
@@ -829,12 +816,6 @@ static void initModem() {
   bool networkOk = simOk && waitForNetwork();
   setModemReady(simOk && networkOk);
 
-  updateModemState(
-    modemReady  ? (int16_t)STATE_READY : (int16_t)STATE_ERROR,
-    simOk       ? (int16_t)STATE_READY : (int16_t)STATE_ERROR,
-    networkOk   ? (int16_t)STATE_READY : (int16_t)STATE_ERROR
-  );
-
   Serial.println(modemReady
     ? "[MODEM] Modem initialized successfully"
     : "[MODEM] Modem initialization failed");
@@ -844,10 +825,6 @@ static void initModem() {
 // Modem_init — called from setup()
 // ---------------------------------------------------------------------------
 bool Modem_init() {
-  Shared_writeInputRegister(DEVICE_STATUS_REGISTER,  (int16_t)STATE_READY);
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER,   (int16_t)STATE_IDLE);
-  Shared_writeInputRegister(SIM_STATUS_REGISTER,     (int16_t)STATE_IDLE);
-  Shared_writeInputRegister(NETWORK_STATUS_REGISTER, (int16_t)STATE_IDLE);
   return true;
 }
 
@@ -899,8 +876,6 @@ static void dispatchAISMS(const AIPendingSMS &pending) {
   String msg = pending.isAlarm ? buildAnalogAlarmSMS(cfg, pending.value)
                                : buildAnalogReturnSMS(cfg, pending.value);
 
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
-
   for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
     if (!rec.items[i].enabled) continue;
     if (!(cfg.selected_contacts & (1 << i))) continue;
@@ -911,9 +886,6 @@ static void dispatchAISMS(const AIPendingSMS &pending) {
     if (!modemReady) break;
     sendSMS(normalized, msg);
   }
-
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER,
-    modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
 }
 
 static String buildAlarmSMS(const DigitalInputConfig &cfg) {
@@ -955,7 +927,6 @@ static void dispatchDISMS(const DIPendingSMS &pending) {
 
   String msg = pending.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
 
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
   for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
     if (!rec.items[i].enabled) continue;
     if (!(diCfg.selected_contacts & (1 << i))) continue;
@@ -966,8 +937,6 @@ static void dispatchDISMS(const DIPendingSMS &pending) {
     if (!modemReady) break;
     sendSMS(normalized, msg);
   }
-  Shared_writeInputRegister(MODEM_STATUS_REGISTER,
-    modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
 }
 
 // ---------------------------------------------------------------------------
@@ -1041,7 +1010,6 @@ void Modem_task(void *pvParameters) {
       ContactList rec = {};
       if (Shared_getRecipientContacts(rec) && rec.count > 0) {
         String msg = buildSystemStatusSMS();
-        Shared_writeInputRegister(MODEM_STATUS_REGISTER, (int16_t)STATE_BUSY);
         for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
           if (!rec.items[i].enabled) continue;
           if (!(hbCfg.selected_contacts & (1 << i))) continue;
@@ -1052,20 +1020,14 @@ void Modem_task(void *pvParameters) {
           if (!modemReady) break;
           sendSMS(normalized, msg);
         }
-        Shared_writeInputRegister(MODEM_STATUS_REGISTER,
-          modemReady ? (int16_t)STATE_READY : (int16_t)STATE_ERROR);
         Serial.println("[HEARTBEAT] Status SMS dispatched");
       }
     }
 
-    // Drain DI SMS queue (alarm and return entries)
+    // Drain DI SMS queue
     DIPendingSMS diPending = {};
     if (Shared_takeDIPendingSMS(diPending)) {
-      if (!modemReady) {
-        Shared_writeAlarmResult(diPending.index, simMissingLatched ? STATUS_ERROR_SIM : STATUS_ERROR_MODEM);
-      } else {
-        dispatchDISMS(diPending);
-      }
+      if (modemReady) dispatchDISMS(diPending);
     }
 
     AIPendingSMS aiPending = {};

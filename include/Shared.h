@@ -12,31 +12,6 @@ constexpr size_t MAX_PHONE_LIST      = 20; // total phone slots for device
 constexpr size_t PHONE_NUMBER_LENGTH = 20;
 constexpr size_t MAX_PHONE_PER_LIST  = 5;
 
-enum RegisterStatus : int16_t { //this is used for Modbus register status values, and also for internal alarm result storage, since we are not using Modbus RTU or TCP in RAMS we can remove the Modbus dependency and just use these values internally, but this reduces readability of the code since we are not using modbus anymore, but we can keep the same values for compatibility with the existing code, or we can change th
-  STATUS_IDLE           =  0,
-  STATUS_ERROR_SEND     = -1,
-  STATUS_ERROR_SIM      = -2,
-  STATUS_ERROR_CONFIG   = -4,
-  STATUS_ERROR_EMPTY    = -5,
-  STATUS_ERROR_MODEM    = -6
-};
-
-enum RuntimeState : int16_t {
-  STATE_IDLE = 0,
-  STATE_READY   = 1,
-  STATE_BUSY    = 2,
-  STATE_ERROR   = -1
-};
-
-// Compatibility: small input register set used for modem/device status
-constexpr size_t DEVICE_STATUS_REGISTER   = 0; // this is used to indicate overall device status (ready, error, etc.), but where is it displays? the answer to this is that it is used in the Modem code to indicate the overall device status, and it is also used in the Shared code to indicate the overall device status, but it is not displayed anywhere in the UI, it is just used internally for status tracking. But "Register" is the term we used 
-constexpr size_t MODEM_STATUS_REGISTER    = 1;
-constexpr size_t SIM_STATUS_REGISTER      = 2;
-constexpr size_t NETWORK_STATUS_REGISTER  = 3;
-
-// Compatibility helper (keeps Modem code working)
-bool Shared_writeInputRegister(size_t index, int16_t value);
-
 // Legacy newline phone list removed in favor of Contact/ContactList
 
 struct Contact {
@@ -141,9 +116,6 @@ bool Shared_saveGatewaySettings(const GatewaySettings &settings);
 // Contact-based API: event recipients (also authorized for SMS relay control)
 bool Shared_getRecipientContacts(ContactList &out);
 bool Shared_saveRecipientContacts(const ContactList &list);
-
-// Alarm result storage (per-input)
-bool Shared_writeAlarmResult(size_t index, int16_t value);
 
 // AI alarm state (set by IOScanner, read by AP for dashboard)
 bool Shared_setAIAlarmState(size_t index, bool inAlarm);

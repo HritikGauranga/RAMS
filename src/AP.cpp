@@ -1515,7 +1515,7 @@ static const char *htmlPage() {
         <div class="panel" style="margin-top:20px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
             <h2 style="margin:0">Input &amp; Output Status</h2>
-            <span style="font-size:13px;color:#6b7280;font-weight:600">Last Updated: <strong id="io_timestamp">--:--:--</strong></span>
+            <span style="font-size:13px;color:#6b7280;font-weight:600">Last Updated on: <strong id="io_timestamp">--:--:--</strong></span>
           </div>
           
           <div style="margin-bottom:20px">

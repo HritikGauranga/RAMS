@@ -184,15 +184,11 @@ static void processAnalogInput(size_t index) {
         Shared_setAIAlarmState(index, true);
         Shared_setLastEventTime();
         
-        // Send alarm SMS
         if (!state.alarmSmsSent) {
           sendAnalogAlarmSMS(index, cfg, engValue, true);
           state.alarmSmsSent = true;
         }
-        
-        // Update alarm result register
-        Shared_writeAlarmResult(index, STATUS_ERROR_SEND);
-        
+
         // Trigger relay if configured
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
@@ -230,12 +226,8 @@ static void processAnalogInput(size_t index) {
           Shared_setAIAlarmState(index, false);
           Shared_setLastEventTime();
           
-          // Send return SMS
           sendAnalogAlarmSMS(index, cfg, engValue, false);
-          
-          // Update alarm result register
-          Shared_writeAlarmResult(index, STATUS_IDLE);
-          
+
           // Deactivate relay if configured
           for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
             RelayConfig rcfg = {};
@@ -314,7 +306,6 @@ static void processDigitalInput(size_t index) {
         // Write 1 so dashboard reflects alarm state
         Shared_writeDigitalInput(index, 1);
 
-        // Queue alarm SMS directly — do not rely on Modem edge scan
         if (!state.alarmSmsSent) {
           DigitalInputConfig smsCfg = {};
           Shared_getDigitalInputConfig(index, smsCfg);
@@ -323,8 +314,6 @@ static void processDigitalInput(size_t index) {
           }
           state.alarmSmsSent = true;
         }
-
-        Shared_writeAlarmResult(index, STATUS_ERROR_SEND);
 
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
@@ -358,14 +347,11 @@ static void processDigitalInput(size_t index) {
         // Write 0 so dashboard reflects cleared state
         Shared_writeDigitalInput(index, 0);
 
-        // Queue return SMS directly
         DigitalInputConfig smsCfg = {};
         Shared_getDigitalInputConfig(index, smsCfg);
         if (smsCfg.return_sms_enabled) {
           Shared_postDIPendingSMS(index, false);
         }
-
-        Shared_writeAlarmResult(index, STATUS_IDLE);
 
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};

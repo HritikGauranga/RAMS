@@ -219,5 +219,3 @@ RelayTriggerSource Shared_getRelayTriggerSource(size_t index);
 void Shared_setLastEventTime();
 time_t Shared_getLastEventTime();
 
-// Encoding
-uint16_t encodeSignedRegister(int16_t value);

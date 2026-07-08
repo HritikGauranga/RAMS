@@ -38,47 +38,9 @@ struct IOConfigStore {
   RelayConfig relay[RELAY_OUTPUT_COUNT];
 };
 
-struct IOConfigStoreV2 {
-  char magic[4];
-  uint16_t version;
-  DigitalInputConfig digital[DIGITAL_INPUT_COUNT];
-  AnalogInputConfig analog[ANALOG_INPUT_COUNT];
-  struct RelayConfigV2 {
-    bool enabled;
-    char name[32];
-    bool default_power_up_state;
-    bool sms_control_enabled;
-    bool alarm_control_enabled;
-    uint8_t alarm_source;
-  } relay[RELAY_OUTPUT_COUNT];
-};
-
 static constexpr uint16_t IO_CONFIG_VERSION = 4;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
-
-static bool writeLegacyPhonesFile(const ContactList &list) {
-  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
-  if (list.count == 0) {
-    LittleFS.remove("/phones.conf");
-    Shared_unlockFileSystem();
-    return true;
-  }
-
-  File out = LittleFS.open("/phones.conf", "w");
-  if (!out) {
-    Shared_unlockFileSystem();
-    return false;
-  }
-  for (size_t i = 0; i < list.count; ++i) {
-    if (list.items[i].number[0] != '\0') {
-      out.println(String(list.items[i].number));
-    }
-  }
-  out.close();
-  Shared_unlockFileSystem();
-  return true;
-}
 
 static GatewaySettings gatewaySettings = {
   true,            // useDhcp
@@ -168,14 +130,6 @@ static bool isValidIOConfigStore(const IOConfigStore &store) {
          store.version == IO_CONFIG_VERSION;
 }
 
-static bool isValidLegacyIOConfigStore(const IOConfigStoreV2 &store) {
-  return store.magic[0] == 'I' &&
-         store.magic[1] == 'O' &&
-         store.magic[2] == 'C' &&
-         store.magic[3] == 'F' &&
-         store.version == 2;
-}
-
 static bool loadIOConfigFromFile() {
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
   if (!LittleFS.exists(IO_CONFIG_PATH)) {
@@ -192,9 +146,6 @@ static bool loadIOConfigFromFile() {
   }
 
   size_t fileSize = f.size();
-  Serial.printf("[IOCFG] Config file size: %u bytes (current: %u bytes, legacy: %u bytes)\n",
-                fileSize, (unsigned int)sizeof(IOConfigStore), (unsigned int)sizeof(IOConfigStoreV2));
-
   bool loaded = false;
   if (fileSize == sizeof(IOConfigStore)) {
     IOConfigStore store = {};
@@ -219,39 +170,6 @@ static bool loadIOConfigFromFile() {
     for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = store.digital[i];
     for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = store.analog[i];
     for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) relayConfig[i] = store.relay[i];
-    Shared_unlockState();
-    loaded = true;
-  } else if (fileSize == sizeof(IOConfigStoreV2)) {
-    IOConfigStoreV2 legacyStore = {};
-    size_t readLen = f.readBytes(reinterpret_cast<char *>(&legacyStore), sizeof(legacyStore));
-    f.close();
-    Shared_unlockFileSystem();
-
-    Serial.printf("[IOCFG] Read %u bytes from legacy config file\n", readLen);
-    if (readLen != sizeof(legacyStore)) {
-      Serial.printf("[IOCFG] Legacy size mismatch: read %u bytes but expected %u bytes\n", readLen, (unsigned int)sizeof(legacyStore));
-      return false;
-    }
-
-    if (!isValidLegacyIOConfigStore(legacyStore)) {
-      Serial.printf("[IOCFG] Invalid legacy magic or version - Magic: %c%c%c%c, Version: %u\n",
-                    legacyStore.magic[0], legacyStore.magic[1], legacyStore.magic[2], legacyStore.magic[3],
-                    legacyStore.version);
-      return false;
-    }
-
-    if (!Shared_lockState(pdMS_TO_TICKS(200))) return false;
-    for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) digitalInputConfig[i] = legacyStore.digital[i];
-    for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) analogInputConfig[i] = legacyStore.analog[i];
-    for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
-      relayConfig[i].enabled = legacyStore.relay[i].enabled;
-      memcpy(relayConfig[i].name, legacyStore.relay[i].name, sizeof(relayConfig[i].name));
-      relayConfig[i].default_power_up_state = legacyStore.relay[i].default_power_up_state;
-      relayConfig[i].sms_control_enabled = legacyStore.relay[i].sms_control_enabled;
-      relayConfig[i].alarm_control_enabled = legacyStore.relay[i].alarm_control_enabled;
-      relayConfig[i].alarm_source = legacyStore.relay[i].alarm_source;
-      relayConfig[i].selected_contacts = 0;
-    }
     Shared_unlockState();
     loaded = true;
   } else {
@@ -401,28 +319,6 @@ void Shared_init() {
       }
     }
 
-    if (!loadedFromJson && LittleFS.exists("/phones.conf")) {
-      File f = LittleFS.open("/phones.conf", "r");
-      if (f) {
-        ContactList rec = {0};
-        while (f.available() && rec.count < MAX_PHONE_PER_LIST) {
-          String line = trimCopy(f.readStringUntil('\n'));
-          if (line.length() == 0) continue;
-          if (!isValidPhoneFormat(line)) continue;
-          Contact c = {};
-          c.enabled = true;
-          line.toCharArray(c.number, PHONE_NUMBER_LENGTH);
-          rec.items[rec.count] = c;
-          ++rec.count;
-        }
-        f.close();
-        if (rec.count > 0 && Shared_lockState(pdMS_TO_TICKS(100))) {
-          recipientContacts = rec;
-          Shared_unlockState();
-        }
-      }
-    }
-
     Shared_unlockFileSystem();
   }
 }
@@ -453,17 +349,6 @@ bool Shared_lockSPI(TickType_t timeout) {
 void Shared_unlockSPI() {
   if (spiMutex != nullptr) xSemaphoreGive(spiMutex);
 }
-
-// ---------------------------------------------------------------------------
-// Config load
-// ---------------------------------------------------------------------------
-bool Shared_loadMessageConfig() {
-  // Message CSV support removed for RAMS. No-op loader.
-  return true;
-}
-
-// CSV/message-related accessors removed
-size_t Shared_getLoadedMessageCount() { return 0; }
 
 // ---------------------------------------------------------------------------
 // Snapshot & register access
@@ -514,10 +399,6 @@ void Shared_setAPModeActive(bool active) {
     apModeActive = active;
     Shared_unlockState();
   }
-}
-
-uint16_t encodeSignedRegister(int16_t value) {
-  return static_cast<uint16_t>(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -791,7 +672,6 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   }
   out.print("]}");
   out.close();
-  writeLegacyPhonesFile(filtered);
   Shared_unlockFileSystem();
 
   if (!Shared_lockState(pdMS_TO_TICKS(100))) return false;
@@ -912,7 +792,7 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg) {
 // ---------------------------------------------------------------------------
 static HeartbeatConfig heartbeatConfig = {};
 static bool heartbeatPending = false;
-static uint8_t lastHeartbeatMinute = 0xFF; // sentinel: no send yet this minute
+static uint16_t lastHeartbeatMinute = 0xFFFF;
 
 bool Shared_getHeartbeatConfig(HeartbeatConfig &out) {
   if (!Shared_lockFileSystem(pdMS_TO_TICKS(500))) return false;
@@ -1002,25 +882,23 @@ bool Shared_tickHeartbeat() {
 
   uint8_t h = (uint8_t)ti->tm_hour;
   uint8_t m = (uint8_t)ti->tm_min;
-  // Encode current time as a single byte key to avoid re-firing within same minute
   uint16_t nowKey = (uint16_t)(h * 60 + m);
 
   bool fire = false;
   if (h == cfg.time1_h && m == cfg.time1_m) fire = true;
-  if (cfg.frequency == 1 && h == cfg.time2_h && m == cfg.time2_m) fire = true; // twice a day
+  if (cfg.frequency == 1 && h == cfg.time2_h && m == cfg.time2_m) fire = true;
 
   if (!fire) {
     if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-    lastHeartbeatMinute = 0xFF; // reset so next matching minute fires
+    lastHeartbeatMinute = 0xFFFF;
     Shared_unlockState();
     return false;
   }
 
-  // Prevent firing more than once per minute
   if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
-  bool alreadyFired = (lastHeartbeatMinute == (uint8_t)(nowKey & 0xFF));
+  bool alreadyFired = (lastHeartbeatMinute == nowKey);
   if (!alreadyFired) {
-    lastHeartbeatMinute = (uint8_t)(nowKey & 0xFF);
+    lastHeartbeatMinute = nowKey;
     heartbeatPending = true;
   }
   Shared_unlockState();

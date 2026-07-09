@@ -1951,17 +1951,6 @@ static const char *htmlPage() {
                 </div>
               </div>
               
-              <!-- Event Recipients Section -->
-              <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
-                <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Allow Contact to Operate via SMS Command</label>
-                  <div id="relay_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
-                  <div style="color:#999">(no recipients configured)</div>
-                  </div>
-                </div>
-              </div>
-              
               <!-- Save Button -->
               <div id="do_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
               <div style="margin-top:24px;display:flex;gap:12px">
@@ -2818,24 +2807,6 @@ function switchDO(index){
   eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r) { r.checked = (r.value === mode); });
   document.getElementById('do_alarm_source').value = cfg.alarm_source || 0;
   
-  // Set selected recipients based on bitmask
-  var relay_sel = document.getElementById('relay_recipients_select');
-
-if (relay_sel) {
-
-  var selectedIndices =
-    decodeBitmask(cfg.selected_contacts || 0);
-
-  eachNode(relay_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
-
-      cb.checked =
-        selectedIndices.indexOf(
-          parseInt(cb.value, 10)
-        ) >= 0;
-
-    });
-}
-  
   window.current_do_index = index;
   localStorage.setItem('selectedDOIndex', index);
   updateDOFieldsState();
@@ -2858,8 +2829,7 @@ function updateDOFieldsState(){
   eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r){ r.disabled=!enabled; });
   var alarmSrcEl = document.getElementById('do_alarm_source');
   if (alarmSrcEl) alarmSrcEl.disabled = !alarmCtrl;
-  var relay_sel = document.getElementById('relay_recipients_select');
-  if (relay_sel) eachNode(relay_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
+
 }
 
 function saveDOConfig(){
@@ -2872,21 +2842,13 @@ function saveDOConfig(){
   form_data.append('sms_control_enabled', ctrlMode === 'sms' ? '1' : '0');
   form_data.append('alarm_control_enabled', ctrlMode === 'alarm' ? '1' : '0');
   form_data.append('alarm_source', document.getElementById('do_alarm_source').value);
-  var relay_sel = document.getElementById('relay_recipients_select');
-  var selectedIndices = [];
-  if (relay_sel) {
-    eachNode(relay_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
-      selectedIndices.push(cb.value);
-    });
-  }
-  var bitmask = encodeBitmask(selectedIndices);
-  form_data.append('selected_contacts', bitmask);
+  form_data.append('selected_contacts', 0);
   var status_el = document.getElementById('do_status');
   fetch('/api/relay-config', { method:'POST', body:form_data })
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.success) {
-        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:bitmask};
+        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:0};
         status_el.textContent = 'DO' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {

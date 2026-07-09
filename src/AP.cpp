@@ -1640,15 +1640,15 @@ static const char *htmlPage() {
               
               <!-- SMS Notification Settings Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SMS Notifications</h3>
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Notifications</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="di_alarm_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm SMS</label>
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm Message</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="di_return_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return SMS</label>
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return Message</label>
                   </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr;gap:14px">
@@ -1842,15 +1842,15 @@ static const char *htmlPage() {
               
               <!-- SMS Notification Settings Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #9C27B0">
-                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SMS Notifications</h3>
+                <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Notifications</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="ai_alarm_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm SMS</label>
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm Message</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="ai_return_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return SMS</label>
+                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return Message</label>
                   </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr;gap:14px">
@@ -2035,7 +2035,7 @@ static const char *htmlPage() {
             <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SIM Configuration</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Service Provider</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">APN</label>
                 <input id="sim_provider" type="text" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
               </div>
               <div>

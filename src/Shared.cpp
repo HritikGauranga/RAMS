@@ -38,7 +38,7 @@ struct IOConfigStore {
   RelayConfig relay[RELAY_OUTPUT_COUNT];
 };
 
-static constexpr uint16_t IO_CONFIG_VERSION = 4;
+static constexpr uint16_t IO_CONFIG_VERSION = 5;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 
@@ -787,6 +787,14 @@ bool Shared_getHeartbeatConfig(HeartbeatConfig &out) {
         if (ci < 0) return 0;
         return (uint8_t)json.substring(ci + 1).toInt();
       };
+      auto readUint32 = [&](const char *key) -> uint32_t {
+        String pat = String('"') + key + '"';
+        int ki = json.indexOf(pat);
+        if (ki < 0) return 0;
+        int ci = json.indexOf(':', ki + pat.length());
+        if (ci < 0) return 0;
+        return (uint32_t)json.substring(ci + 1).toInt();
+      };
       auto readBool = [&](const char *key) -> bool {
         String pat = String('"') + key + '"';
         int ki = json.indexOf(pat);
@@ -798,7 +806,7 @@ bool Shared_getHeartbeatConfig(HeartbeatConfig &out) {
         return v.startsWith("true");
       };
       c.enabled           = readBool("enabled");
-      c.selected_contacts = readUint8("selected_contacts");
+      c.selected_contacts = readUint32("selected_contacts");
       c.frequency         = readUint8("frequency");
       c.days_mask         = readUint8("days_mask");
       c.time1_h           = readUint8("time1_h");

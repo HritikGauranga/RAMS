@@ -8,9 +8,9 @@ constexpr size_t DIGITAL_INPUT_COUNT = 4;
 constexpr size_t ANALOG_INPUT_COUNT  = 2;
 constexpr size_t RELAY_OUTPUT_COUNT  = 2;
 
-constexpr size_t MAX_PHONE_LIST      = 20; // total phone slots for device
+constexpr size_t MAX_PHONE_LIST      = 30; // total phone slots for device
 constexpr size_t PHONE_NUMBER_LENGTH = 20;
-constexpr size_t MAX_PHONE_PER_LIST  = 5;
+constexpr size_t MAX_PHONE_PER_LIST  = 30;
 
 // Legacy newline phone list removed in favor of Contact/ContactList
 
@@ -35,7 +35,7 @@ struct DigitalInputConfig {
   bool return_sms_enabled;
   char alarm_message[64];
   char return_message[64];
-  uint8_t selected_contacts; // bitmask for selected contact recipients
+  uint32_t selected_contacts; // bitmask for selected contact recipients
 };
 
 struct AnalogInputConfig {
@@ -53,7 +53,7 @@ struct AnalogInputConfig {
   bool return_sms_enabled;
   char alarm_message[64];
   char return_message[64];
-  uint8_t selected_contacts;
+  uint32_t selected_contacts;
   float offset;               // Added to engineering value after 4-20mA scaling
 };
 
@@ -64,7 +64,7 @@ struct RelayConfig {
   bool sms_control_enabled;
   bool alarm_control_enabled;
   uint8_t alarm_source;  // 0=none, 1-2=AI1-AI2, 3-6=DI1-DI4
-  uint8_t selected_contacts; // bitmask for selected contact recipients
+  uint32_t selected_contacts; // bitmask for selected contact recipients
 };
 
 struct SIMConfig {
@@ -146,7 +146,7 @@ bool Shared_takeDIPendingSMS(DIPendingSMS &out);
 // Heartbeat (Status Message) config
 struct HeartbeatConfig {
   bool     enabled;
-  uint8_t  selected_contacts; // bitmask
+  uint32_t selected_contacts; // bitmask
   uint8_t  frequency;         // 0=once_a_day, 1=twice_a_day, 2=once_a_week
   uint8_t  days_mask;         // bit0=daily, bit1=Mon...bit7=Sun
   uint8_t  time1_h;

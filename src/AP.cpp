@@ -1019,8 +1019,8 @@ static void setupWebServerRoutes() {
       cfg.return_message[sizeof(cfg.return_message) - 1] = '\0';
     }
     if (request->hasParam("selected_contacts", true)) {
-      int val = request->getParam("selected_contacts", true)->value().toInt();
-      cfg.selected_contacts = (uint8_t)(val & 0xFF);
+      uint32_t val = (uint32_t)request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = val;
     }
 
     if (!Shared_saveDigitalInputConfig(idx, cfg)) {
@@ -1127,8 +1127,8 @@ static void setupWebServerRoutes() {
       cfg.return_message[sizeof(cfg.return_message) - 1] = '\0';
     }
     if (request->hasParam("selected_contacts", true)) {
-      int val = request->getParam("selected_contacts", true)->value().toInt();
-      cfg.selected_contacts = (uint8_t)(val & 0xFF);
+      uint32_t val = (uint32_t)request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = val;
     }
     if (request->hasParam("offset", true)) cfg.offset = request->getParam("offset", true)->value().toFloat();
 
@@ -1204,8 +1204,8 @@ static void setupWebServerRoutes() {
       cfg.alarm_source = (uint8_t)(val & 0xFF);
     }
     if (request->hasParam("selected_contacts", true)) {
-      int val = request->getParam("selected_contacts", true)->value().toInt();
-      cfg.selected_contacts = (uint8_t)(val & 0xFF);
+      uint32_t val = (uint32_t)request->getParam("selected_contacts", true)->value().toInt();
+      cfg.selected_contacts = val;
     }
 
     if (!Shared_saveRelayConfig(idx, cfg)) {
@@ -2959,7 +2959,7 @@ loadNetworkCfg();
 loadSIMConfig();
 </script>
 <script>
-var MAX_CONTACTS = 5;
+var MAX_CONTACTS = 30;
 
 function loadPhones(){
   fetch('/api/contacts/recipients').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{

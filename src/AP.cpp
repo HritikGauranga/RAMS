@@ -1154,7 +1154,6 @@ static void setupWebServerRoutes() {
       body += "{\"index\":" + String((int)i) + ",";
       body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
       body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
-      body += "\"default_power_up_state\":" + String(cfg.default_power_up_state ? "true" : "false") + ",";
       body += "\"sms_control_enabled\":" + String(cfg.sms_control_enabled ? "true" : "false") + ",";
       body += "\"alarm_control_enabled\":" + String(cfg.alarm_control_enabled ? "true" : "false") + ",";
       body += "\"alarm_source\":" + String((int)cfg.alarm_source) + ",";
@@ -1189,9 +1188,6 @@ static void setupWebServerRoutes() {
       String name = request->getParam("name", true)->value();
       name.toCharArray(cfg.name, sizeof(cfg.name));
       cfg.name[sizeof(cfg.name) - 1] = '\0';
-    }
-    if (request->hasParam("default_power_up_state", true)) {
-      cfg.default_power_up_state = (request->getParam("default_power_up_state", true)->value() == "1");
     }
     if (request->hasParam("sms_control_enabled", true)) {
       cfg.sms_control_enabled = (request->getParam("sms_control_enabled", true)->value() == "1");
@@ -1911,17 +1907,10 @@ static const char *htmlPage() {
               <!-- Basic Settings Section -->
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #d40000">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                <div style="display:grid;grid-template-columns:1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
                     <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
-                  </div>
-                  <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Default Power-Up State</label>
-                    <select id="do_powerup" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
-                      <option value="0">OFF</option>
-                      <option value="1">ON</option>
-                    </select>
                   </div>
                 </div>
               </div>
@@ -2824,7 +2813,6 @@ function switchDO(index){
   if (!cfg) return;
   document.getElementById('do_enabled').checked = cfg.enabled;
   document.getElementById('do_name').value = cfg.name || '';
-  document.getElementById('do_powerup').value = cfg.default_power_up_state ? '1' : '0';
   // Set control mode radio
   var mode = cfg.alarm_control_enabled ? 'alarm' : (cfg.sms_control_enabled ? 'sms' : 'none');
   eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r) { r.checked = (r.value === mode); });
@@ -2865,7 +2853,7 @@ function updateDOFieldsState(){
   var enabled = document.getElementById('do_enabled').checked;
   var mode = getDOCtrlMode();
   var alarmCtrl = enabled && mode === 'alarm';
-  var fields = ['do_name','do_powerup'];
+  var fields = ['do_name'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
   eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r){ r.disabled=!enabled; });
   var alarmSrcEl = document.getElementById('do_alarm_source');
@@ -2880,7 +2868,6 @@ function saveDOConfig(){
   form_data.append('index', index);
   form_data.append('enabled', document.getElementById('do_enabled').checked ? '1' : '0');
   form_data.append('name', document.getElementById('do_name').value.trim());
-  form_data.append('default_power_up_state', document.getElementById('do_powerup').value);
   var ctrlMode = getDOCtrlMode();
   form_data.append('sms_control_enabled', ctrlMode === 'sms' ? '1' : '0');
   form_data.append('alarm_control_enabled', ctrlMode === 'alarm' ? '1' : '0');
@@ -2899,7 +2886,7 @@ function saveDOConfig(){
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.success) {
-        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),default_power_up_state:form_data.get('default_power_up_state')==='1',sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:bitmask};
+        do_configs[index] = {enabled:form_data.get('enabled')==='1',name:form_data.get('name'),sms_control_enabled:form_data.get('sms_control_enabled')==='1',alarm_control_enabled:form_data.get('alarm_control_enabled')==='1',alarm_source:parseInt(form_data.get('alarm_source')),selected_contacts:bitmask};
         status_el.textContent = 'DO' + (index+1) + ' configuration saved successfully!';
         status_el.style.color = 'green';
       } else {

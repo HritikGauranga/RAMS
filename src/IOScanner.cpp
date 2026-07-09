@@ -441,12 +441,10 @@ bool IOScanner_init() {
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
     pinMode(DO_PIN[i], OUTPUT);
     
-    // Set initial state based on configuration
+    // Both relay outputs start OFF by default
     RelayConfig cfg = {};
     bool initialState = false;
-    if (Shared_getRelayConfig(i, cfg) && cfg.enabled) {
-      initialState = cfg.default_power_up_state;
-    }
+    (void)Shared_getRelayConfig(i, cfg);
     
     // Active LOW: LOW = ON, HIGH = OFF
     digitalWrite(DO_PIN[i], initialState ? LOW : HIGH);

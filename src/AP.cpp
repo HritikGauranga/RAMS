@@ -1930,16 +1930,16 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #FF9800">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Control Configuration</h3>
                 <div style="display:flex;flex-direction:column;gap:14px">
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="do_sms_control" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable SMS Control</label>
-                  </div>
-                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Allows remote control via SMS commands</div>
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="do_alarm_control" onchange="updateDOFieldsState()" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Alarm Control</label>
-                  </div>
-                  <div style="font-size:11px;color:#999;margin-left:26px;margin-top:-10px">Output activates automatically when linked alarm triggers</div>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="radio" name="do_ctrl_mode" id="do_ctrl_sms" value="sms" onchange="updateDOFieldsState()" style="width:16px;height:16px;cursor:pointer">
+                    <span style="font-weight:500;font-size:13px">SMS Control</span>
+                  </label>
+                  <div style="font-size:11px;color:#999;margin-left:24px;margin-top:-10px">Allows remote control via SMS commands</div>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="radio" name="do_ctrl_mode" id="do_ctrl_alarm" value="alarm" onchange="updateDOFieldsState()" style="width:16px;height:16px;cursor:pointer">
+                    <span style="font-weight:500;font-size:13px">Alarm Control</span>
+                  </label>
+                  <div style="font-size:11px;color:#999;margin-left:24px;margin-top:-10px">Output activates automatically when linked alarm triggers</div>
                 </div>
               </div>
               
@@ -1950,6 +1950,7 @@ static const char *htmlPage() {
                   <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm Source</label>
                   <select id="do_alarm_source" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;cursor:pointer">
                     <option value="0">None (Manual / SMS only)</option>
+                    <option value="7">Any Input Alarm</option>
                     <option value="1">AI1 - Analog Alarm</option>
                     <option value="2">AI2 - Analog Alarm</option>
                     <option value="3">DI1 - Digital Alarm</option>
@@ -2354,7 +2355,7 @@ function loadDashboard(){
         io.relay_outputs.forEach(function(relay, idx) {
           var state = relay.state ? 'ON' : 'OFF';
           var badge = relay.state ? 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
-          var alarmSrcLabels = ['None','AI1','AI2','DI1','DI2','DI3','DI4'];
+          var alarmSrcLabels = ['None','AI1','AI2','DI1','DI2','DI3','DI4','Any'];
           var src = relay.alarm_source || 0;
           var linkText = (relay.alarm_control_enabled && src > 0) ? (alarmSrcLabels[src] || 'None') : 'None';
           var doRowStyle = relay.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
@@ -2824,8 +2825,9 @@ function switchDO(index){
   document.getElementById('do_enabled').checked = cfg.enabled;
   document.getElementById('do_name').value = cfg.name || '';
   document.getElementById('do_powerup').value = cfg.default_power_up_state ? '1' : '0';
-  document.getElementById('do_sms_control').checked = cfg.sms_control_enabled;
-  document.getElementById('do_alarm_control').checked = cfg.alarm_control_enabled;
+  // Set control mode radio
+  var mode = cfg.alarm_control_enabled ? 'alarm' : (cfg.sms_control_enabled ? 'sms' : 'none');
+  eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r) { r.checked = (r.value === mode); });
   document.getElementById('do_alarm_source').value = cfg.alarm_source || 0;
   
   // Set selected recipients based on bitmask
@@ -2851,11 +2853,21 @@ if (relay_sel) {
   updateDOFieldsState();
 }
 
+function getDOCtrlMode() {
+  var radios = document.querySelectorAll('input[name="do_ctrl_mode"]');
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) return radios[i].value;
+  }
+  return 'none';
+}
+
 function updateDOFieldsState(){
   var enabled = document.getElementById('do_enabled').checked;
-  var alarmCtrl = enabled && document.getElementById('do_alarm_control').checked;
-  var fields = ['do_name','do_powerup','do_sms_control','do_alarm_control'];
+  var mode = getDOCtrlMode();
+  var alarmCtrl = enabled && mode === 'alarm';
+  var fields = ['do_name','do_powerup'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
+  eachNode(document.querySelectorAll('input[name="do_ctrl_mode"]'), function(r){ r.disabled=!enabled; });
   var alarmSrcEl = document.getElementById('do_alarm_source');
   if (alarmSrcEl) alarmSrcEl.disabled = !alarmCtrl;
   var relay_sel = document.getElementById('relay_recipients_select');
@@ -2869,8 +2881,9 @@ function saveDOConfig(){
   form_data.append('enabled', document.getElementById('do_enabled').checked ? '1' : '0');
   form_data.append('name', document.getElementById('do_name').value.trim());
   form_data.append('default_power_up_state', document.getElementById('do_powerup').value);
-  form_data.append('sms_control_enabled', document.getElementById('do_sms_control').checked ? '1' : '0');
-  form_data.append('alarm_control_enabled', document.getElementById('do_alarm_control').checked ? '1' : '0');
+  var ctrlMode = getDOCtrlMode();
+  form_data.append('sms_control_enabled', ctrlMode === 'sms' ? '1' : '0');
+  form_data.append('alarm_control_enabled', ctrlMode === 'alarm' ? '1' : '0');
   form_data.append('alarm_source', document.getElementById('do_alarm_source').value);
   var relay_sel = document.getElementById('relay_recipients_select');
   var selectedIndices = [];

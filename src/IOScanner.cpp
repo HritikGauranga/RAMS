@@ -196,7 +196,7 @@ static void processAnalogInput(size_t index) {
           RelayConfig rcfg = {};
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
             // Check if this relay is linked to this AI (alarm_source: 1=AI1, 2=AI2)
-            if (rcfg.alarm_source == (index + 1)) {
+            if (rcfg.alarm_source == (index + 1) || rcfg.alarm_source == 7) {
               Shared_setRelayState(r, true);
               relayAlarmHeld[r] = true;
               Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
@@ -234,7 +234,7 @@ static void processAnalogInput(size_t index) {
           for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
             RelayConfig rcfg = {};
             if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
-              if (rcfg.alarm_source == (index + 1)) {
+              if (rcfg.alarm_source == (index + 1) || rcfg.alarm_source == 7) {
                 Shared_setRelayState(r, false);
                 relayAlarmHeld[r] = false;
                 Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
@@ -324,7 +324,7 @@ static void processDigitalInput(size_t index) {
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
-            if (rcfg.alarm_source == (index + 3)) {
+            if (rcfg.alarm_source == (index + 3) || rcfg.alarm_source == 7) {
               Shared_setRelayState(r, true);
               relayAlarmHeld[r] = true;
               Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);
@@ -362,7 +362,7 @@ static void processDigitalInput(size_t index) {
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
           RelayConfig rcfg = {};
           if (Shared_getRelayConfig(r, rcfg) && rcfg.enabled && rcfg.alarm_control_enabled) {
-            if (rcfg.alarm_source == (index + 3)) {
+            if (rcfg.alarm_source == (index + 3) || rcfg.alarm_source == 7) {
               Shared_setRelayState(r, false);
               relayAlarmHeld[r] = false;
               Shared_setRelayTriggerSource(r, RELAY_SOURCE_ALARM);

@@ -1283,7 +1283,7 @@ static void setupWebServerRoutes() {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     HeartbeatConfig cfg = {};
     cfg.enabled           = request->hasParam("enabled", true) && request->getParam("enabled", true)->value() == "1";
-    cfg.selected_contacts = request->hasParam("selected_contacts", true) ? (uint8_t)request->getParam("selected_contacts", true)->value().toInt() : 0;
+    cfg.selected_contacts = request->hasParam("selected_contacts", true) ? (uint32_t)request->getParam("selected_contacts", true)->value().toInt() : 0;
     cfg.frequency         = request->hasParam("frequency", true) ? (uint8_t)request->getParam("frequency", true)->value().toInt() : 0;
     cfg.days_mask         = request->hasParam("days_mask", true) ? (uint8_t)request->getParam("days_mask", true)->value().toInt() : 0;
     cfg.time1_h           = request->hasParam("time1_h", true) ? (uint8_t)request->getParam("time1_h", true)->value().toInt() : 0;
@@ -1601,7 +1601,7 @@ static const char *htmlPage() {
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <input type="checkbox" id="di_enabled" onchange="updateDIFieldsState()" style="width:18px;height:18px;cursor:pointer">
-              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
+              <label style="font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap">Enable This Input</label>
             </div>
           </div>
           
@@ -1612,12 +1612,12 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Input Name</label>
                     <input type="text" id="di_name" placeholder="e.g. Main Door" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
-                    <select id="di_type" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;background-color:#fff;cursor:pointer;box-sizing:border-box">
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Input Type</label>
+                    <select id="di_type" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;background-color:#fff;cursor:pointer;box-sizing:border-box">
                       <option value="0">Alarm on Close (Normally Open)</option>
                       <option value="1">Alarm on Open (Normally Closed)</option>
                     </select>
@@ -1630,23 +1630,23 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Timing Configuration</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Alarm (seconds)</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time to Alarm (seconds)</label>
                     <input type="number"
                     id="di_tta"
                     min="1"
                     max="65535"
                     oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">                    
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">                    
                     <div style="font-size:11px;color:#999;margin-top:4px">Duration before triggering alarm (1-65535s)</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time to Return (seconds)</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time to Return (seconds)</label>
                     <input type="number"
                     id="di_ttr"
                     min="1"
                     max="65535"
                     oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">                    
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">                    
                     <div style="font-size:11px;color:#999;margin-top:4px">Duration after alarm to return (1-65535s)</div>
                   </div>
                 </div>
@@ -1658,21 +1658,21 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="di_alarm_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm Message</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Send Alarm Message</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="di_return_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return Message</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Send Return Message</label>
                   </div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr;gap:14px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Alarm Message</label>
                     <input type="text" id="di_alarm_msg" placeholder="Message when alarm occurs" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Return Message</label>
                     <input type="text" id="di_return_msg" placeholder="Message when alarm clears" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
@@ -1683,7 +1683,7 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Notify Recipients on Alarm</label>
                   <div id="di_recipients_select"></div>
                 </div>
               </div>
@@ -1712,7 +1712,7 @@ static const char *htmlPage() {
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <input type="checkbox" id="ai_enabled" onchange="updateAIFieldsState()" style="width:18px;height:18px;cursor:pointer">
-              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Input</label>
+              <label style="font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap">Enable This Input</label>
             </div>
           </div>
           
@@ -1723,12 +1723,12 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Input Name</label>
                     <input type="text" id="ai_name" placeholder="e.g. Tank Level" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Engineering Unit</label>
-                    <select id="ai_unit_select" onchange="toggleAIUnitCustom(true)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff">
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Engineering Unit</label>
+                    <select id="ai_unit_select" onchange="toggleAIUnitCustom(true)" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;background-color:#fff;min-height:32px">
                       <option value="Liters">Liters</option>
                       <option value="Percentage (%)">Percentage (%)</option>
                       <option value="Bar">Bar</option>
@@ -1739,7 +1739,7 @@ static const char *htmlPage() {
                       <option value="Volts">Volts</option>
                       <option value="__custom__">Custom Text</option>
                     </select>
-                    <input type="text" id="ai_unit_custom" placeholder="Custom unit" maxlength="15" style="display:none;width:100%;margin-top:8px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="ai_unit_custom" placeholder="Custom unit" maxlength="15" style="display:none;width:min(100%, 240px);max-width:240px;margin-top:8px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                 </div>
               </div>
@@ -1750,25 +1750,25 @@ static const char *htmlPage() {
               <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Scaling (4-20mA)</h3>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale Low (4mA)</label>
+              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Scale Low (4mA)</label>
               <input type="number"
               id="ai_scale_low"
               min="-999999"
               max="999999"
               step="0.01"
               oninput="if(this.value>999999)this.value=999999;if(this.value<-999999)this.value=-999999"
-              style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 4mA (-999999 to 999999)</div>
               </div>
               <div>
-              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Scale High (20mA)</label>
+              <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Scale High (20mA)</label>
               <input type="number"
               id="ai_scale_high"
               min="-999999"
               max="999999"
               step="0.01"
               oninput="if(this.value>999999)this.value=999999;if(this.value<-999999)this.value=-999999"
-              style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+              style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               <div style="font-size:11px;color:#999;margin-top:4px">Engineering value at 20mA (-999999 to 999999)</div>
             </div>
 
@@ -1780,10 +1780,10 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Value Offset</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Offset</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Offset</label>
                     <input type="number" id="ai_offset" step="0.01"
                     oninput="if(this.value.length>12)this.value=this.value.slice(0,12)"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Added to scaled value (positive or negative). Affects dashboard, alarms &amp; SMS.</div>
                   </div>
                 </div>
@@ -1795,19 +1795,19 @@ static const char *htmlPage() {
                 <div style="display:flex;gap:16px;flex-wrap:wrap">
                   <div style="display:flex;align-items:center;gap:6px">
                     <input type="radio" id="ai_type_high" name="ai_alarm_type" value="0" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">High Alarm</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">High Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
                     <input type="radio" id="ai_type_low" name="ai_alarm_type" value="1" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Low Alarm</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Low Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
                     <input type="radio" id="ai_type_inband" name="ai_alarm_type" value="2" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">In-Band Alarm</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">In-Band Alarm</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px">
                     <input type="radio" id="ai_type_outband" name="ai_alarm_type" value="3" onchange="updateAIThresholdHints()" style="width:16px;height:16px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Out-of-Band Alarm</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Out-of-Band Alarm</label>
                   </div>
                 </div>
               </div>
@@ -1817,35 +1817,35 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Thresholds</h3>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Set Point</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Set Point</label>
                     <input type="number"
                     id="ai_set_point"
                     step="0.01"
                     oninput="if(this.value.length>12)this.value=this.value.slice(0,12);updateAIThresholdHints()"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div id="ai_set_point_hint" style="font-size:11px;color:#999;margin-top:4px">Alarm triggers at this value</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Reset Point</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Reset Point</label>
                     <input type="number"
                     id="ai_reset_point"
                     step="0.01"
                     oninput="if(this.value.length>12)this.value=this.value.slice(0,12);updateAIThresholdHints()"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div id="ai_reset_point_hint" style="font-size:11px;color:#999;margin-top:4px">Alarm clears at this value</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Alarm (seconds)</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time To Alarm (seconds)</label>
                     <input type="number" id="ai_tta" min="1" max="65535" value="1"
                     oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm triggers  (1-65535s)</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time To Return (seconds)</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time To Return (seconds)</label>
                     <input type="number" id="ai_ttr" min="1" max="65535" value="1"
                     oninput="if(this.value>65535)this.value=65535;if(this.value<1&&this.value!='')this.value=1;"
-                    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Delay before alarm clears (1-65535s)</div>
                   </div>
                 </div>
@@ -1857,21 +1857,21 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:14px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="ai_alarm_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Alarm Message</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Send Alarm Message</label>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <input type="checkbox" id="ai_return_sms" style="width:18px;height:18px;cursor:pointer">
-                    <label style="font-weight:500;font-size:13px;cursor:pointer">Send Return Message</label>
+                    <label style="font-weight:500;font-size:14px;cursor:pointer">Send Return Message</label>
                   </div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr;gap:14px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Alarm Message</label>
                     <input type="text" id="ai_alarm_msg" placeholder="e.g. HIGH TANK LEVEL" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Return Message</label>
                     <input type="text" id="ai_return_msg" placeholder="e.g. TANK LEVEL RETURNED TO NORMAL" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
@@ -1882,7 +1882,7 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Notify Recipients on Alarm</label>
                   <div id="ai_recipients_select"></div>
                 </div>
               </div>
@@ -1911,7 +1911,7 @@ static const char *htmlPage() {
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <input type="checkbox" id="do_enabled" onchange="updateDOFieldsState()" style="width:18px;height:18px;cursor:pointer">
-              <label style="font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap">Enable This Output</label>
+              <label style="font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap">Enable This Output</label>
             </div>
           </div>
           
@@ -1922,7 +1922,7 @@ static const char *htmlPage() {
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Basic Settings</h3>
                 <div style="display:grid;grid-template-columns:1fr;gap:20px">
                   <div>
-                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
+                    <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Output Name</label>
                     <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                 </div>
@@ -1934,12 +1934,12 @@ static const char *htmlPage() {
                 <div style="display:flex;flex-direction:column;gap:14px">
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="radio" name="do_ctrl_mode" id="do_ctrl_sms" value="sms" onchange="updateDOFieldsState()" style="width:16px;height:16px;cursor:pointer">
-                    <span style="font-weight:500;font-size:13px">SMS Control</span>
+                    <span style="font-weight:500;font-size:14px">SMS Control</span>
                   </label>
                   <div style="font-size:11px;color:#999;margin-left:24px;margin-top:-10px">Allows remote control via SMS commands</div>
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="radio" name="do_ctrl_mode" id="do_ctrl_alarm" value="alarm" onchange="updateDOFieldsState()" style="width:16px;height:16px;cursor:pointer">
-                    <span style="font-weight:500;font-size:13px">Alarm Control</span>
+                    <span style="font-weight:500;font-size:14px">Alarm Control</span>
                   </label>
                   <div style="font-size:11px;color:#999;margin-left:24px;margin-top:-10px">Output activates automatically when linked alarm triggers</div>
                 </div>
@@ -1949,8 +1949,8 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #2196F3">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Alarm Linking</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Link to Alarm Source</label>
-                  <select id="do_alarm_source" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;cursor:pointer">
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Link to Alarm Source</label>
+                  <select id="do_alarm_source" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box;background-color:#fff;cursor:pointer">
                     <option value="0">None (Manual / SMS only)</option>
                     <option value="7">Any Input Alarm</option>
                     <option value="1">AI1 - Analog Alarm</option>
@@ -1996,7 +1996,7 @@ static const char *htmlPage() {
             <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Connection Mode</h3>
             <div style="display:flex;align-items:center;gap:8px">
               <input id="net_useDhcp" type="checkbox" style="width:18px;height:18px;cursor:pointer" onchange="toggleNetworkStaticFields()">
-              <label for="net_useDhcp" style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Use DHCP for Ethernet</label>
+              <label for="net_useDhcp" style="font-weight:500;font-size:14px;cursor:pointer;margin:0">Use DHCP for Ethernet</label>
             </div>
           </div>
           <!-- Static Network Settings -->
@@ -2004,16 +2004,16 @@ static const char *htmlPage() {
             <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Static Network Settings</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Static IP</label>
-                <input id="net_staticIp" type="text" placeholder="192.168.8.200" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Static IP</label>
+                <input id="net_staticIp" type="text" placeholder="000.000.000.000" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Subnet Mask</label>
-                <input id="net_subnetMask" type="text" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Subnet Mask</label>
+                <input id="net_subnetMask" type="text" placeholder="255.255.255.0" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Gateway IP</label>
-                <input id="net_gatewayIp" type="text" placeholder="192.168.8.1" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Gateway IP</label>
+                <input id="net_gatewayIp" type="text" placeholder="000.000.000.000" inputmode="numeric" pattern="[0-9.]+" maxlength="15" oninput="sanitizeIpInput(this)" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
               </div>
             </div>
             <div style="font-size:11px;color:#999;margin-top:10px">Reboot device after saving to apply network changes.</div>
@@ -2027,16 +2027,16 @@ static const char *htmlPage() {
             <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">SIM Configuration</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">APN</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">APN</label>
                 <input id="sim_provider" type="text" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SIM Phone Number</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">SIM Phone Number</label>
                 <input id="sim_phone" type="text" placeholder="e.g., +1234567890" maxlength="19" oninput="let v=this.value.replace(/[^0-9+]/g,'');if(v.startsWith('+'))v='+'+v.substring(1).replace(/\+/g,'');else v=v.replace(/\+/g,'');this.value=v;" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SMS Command PIN</label>
-                <input id="sim_relay_pin" type="text" placeholder="e.g. 0000" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">SMS Command PIN</label>
+                <input id="sim_relay_pin" type="text" placeholder="e.g. 0000" maxlength="15" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
               </div>
             </div>
           </div>
@@ -2052,16 +2052,16 @@ static const char *htmlPage() {
             <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Site Details</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Name</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Site Name</label>
                 <input id="site_name" type="text" maxlength="63" oninput="if(this.value.length>63)this.value=this.value.slice(0,63)" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div style="grid-column:1/-1">
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Address</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Site Address</label>
                 <textarea id="site_address" rows="2" maxlength="127" oninput="if(this.value.length>127)this.value=this.value.slice(0,127)" style="width:min(100%, 320px);max-width:320px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;resize:vertical;min-height:64px"></textarea>
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time Zone</label>
-                <select id="site_timezone" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time Zone</label>
+                <select id="site_timezone" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box;background-color:#fff">
                   <option value="UTC0">UTC</option>
                   <option value="IST-5:30">India (IST, UTC+5:30)</option>
                   <option value="GST-4">Gulf (GST, UTC+4)</option>
@@ -2094,39 +2094,37 @@ static const char *htmlPage() {
             <div style="font-size:12px;color:#999;margin-bottom:14px">Automatically sends a system status SMS on a schedule (same as GET STATUS response).</div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
               <input type="checkbox" id="hb_enabled" style="width:18px;height:18px;cursor:pointer">
-              <label style="font-weight:500;font-size:13px;cursor:pointer;margin:0">Enable Status Message</label>
+              <label style="font-weight:500;font-size:14px;cursor:pointer;margin:0">Enable Status Message</label>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SMS Contact</label>
-                <div id="hb_contacts" style="padding:8px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;min-height:60px;font-size:13px">
-                  <div style="color:#999">(no recipients configured)</div>
-                </div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">SMS Contact</label>
+                <div id="hb_contacts"></div>
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Frequency</label>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Frequency</label>
                 <div style="display:flex;flex-direction:column;gap:8px">
-                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
                     <input type="radio" name="hb_freq" value="0" style="width:16px;height:16px"> Once a Day
                   </label>
-                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
                     <input type="radio" name="hb_freq" value="1" style="width:16px;height:16px"> Twice a Day
                   </label>
-                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
                     <input type="radio" name="hb_freq" value="2" style="width:16px;height:16px"> Once a Week
                   </label>
                 </div>
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Day(s)</label>
-                <div id="hb_days" style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px"></div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Day(s)</label>
+                <div id="hb_days" style="display:flex;flex-wrap:wrap;gap:8px;font-size:14px"></div>
               </div>
               <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time-1</label>
-                <input type="time" id="hb_time1" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time-1</label>
+                <input type="time" id="hb_time1" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
                 <div id="hb_time2_wrap" style="margin-top:12px;display:none">
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time-2</label>
-                  <input type="time" id="hb_time2" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time-2</label>
+                  <input type="time" id="hb_time2" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
                 </div>
               </div>
             </div>
@@ -2369,11 +2367,13 @@ function loadDashboard(){
 // RecipientPicker — reusable chip+collapsible picker (max 5 selections)
 // ---------------------------------------------------------------------------
 var MAX_PICKER_SELECTIONS = 5;
+var MAX_PICKER_SELECTIONS_UNLIMITED = 30;
 
-function RecipientPicker(containerId) {
+function RecipientPicker(containerId, maxSelections) {
   this.containerId = containerId;
-  this.contacts = [];   // [{idx, name, number}] — enabled contacts only
-  this.selected = [];   // array of contact idx (integers)
+  this.maxSelections = (maxSelections !== undefined) ? maxSelections : MAX_PICKER_SELECTIONS;
+  this.contacts = [];
+  this.selected = [];
   this.disabled = false;
   this.expanded = false;
   this._render();
@@ -2427,7 +2427,7 @@ RecipientPicker.prototype._render = function() {
   footer.className = 'rp-footer';
   var counter = document.createElement('span');
   counter.className = 'rp-counter';
-  counter.textContent = 'Selected: ' + this.selected.length + ' / ' + MAX_PICKER_SELECTIONS;
+  counter.textContent = 'Selected: ' + this.selected.length + ' / ' + (this.maxSelections >= MAX_PICKER_SELECTIONS_UNLIMITED ? 'All' : this.maxSelections);
   footer.appendChild(counter);
   if (!this.disabled) {
     var toggle = document.createElement('button');
@@ -2456,6 +2456,41 @@ RecipientPicker.prototype._render = function() {
     search.addEventListener('input', function() { self._renderList(list, this.value); });
     panel.appendChild(search);
 
+    // "All Contacts" toggle — only shown when no search filter is active and no selection limit
+    var allWrap = document.createElement('label');
+    allWrap.className = 'rp-item';
+    allWrap.style.borderBottom = '1px solid #eee';
+    allWrap.style.paddingBottom = '6px';
+    allWrap.style.marginBottom = '4px';
+    var showAllOption = this.maxSelections >= this.contacts.length || this.maxSelections >= MAX_PICKER_SELECTIONS_UNLIMITED;
+    var allCb = document.createElement('input');
+    allCb.type = 'checkbox';
+    var enabledContacts = this.contacts;
+    var allSelected = enabledContacts.length > 0 && enabledContacts.every(function(c) {
+      return self.selected.indexOf(c.idx) >= 0;
+    });
+    allCb.checked = allSelected;
+    allCb.indeterminate = !allSelected && this.selected.length > 0;
+    allCb.addEventListener('change', function() {
+      if (this.checked) {
+        self.selected = self.contacts.map(function(c) { return c.idx; });
+      } else {
+        self.selected = [];
+      }
+      self._render();
+    });
+    var allTxt = document.createElement('span');
+    allTxt.textContent = 'All Contacts';
+    allTxt.style.fontWeight = '600';
+    allWrap.appendChild(allCb);
+    allWrap.appendChild(allTxt);
+    if (showAllOption) panel.appendChild(allWrap);
+
+    // Hide "All Contacts" row when searching
+    search.addEventListener('input', function() {
+      allWrap.style.display = this.value.length > 0 ? 'none' : 'flex';
+    });
+
     var list = document.createElement('div');
     list.className = 'rp-list';
     this._renderList(list, '');
@@ -2479,7 +2514,7 @@ RecipientPicker.prototype._renderList = function(listEl, query) {
     if (q && label.toLowerCase().indexOf(q) < 0) return;
     shown++;
     var isChecked = self.selected.indexOf(c.idx) >= 0;
-    var atMax = self.selected.length >= MAX_PICKER_SELECTIONS;
+    var atMax = self.selected.length >= self.maxSelections;
     var item = document.createElement('label');
     item.className = 'rp-item';
     var cb = document.createElement('input');
@@ -2514,7 +2549,7 @@ RecipientPicker.prototype._contactByIdx = function(idx) {
 
 RecipientPicker.prototype._select = function(idx) {
   if (this.selected.indexOf(idx) >= 0) return;
-  if (this.selected.length >= MAX_PICKER_SELECTIONS) return;
+  if (this.selected.length >= this.maxSelections) return;
   this.selected.push(idx);
   this._render();
 };
@@ -2559,9 +2594,9 @@ RecipientPicker.prototype.setDisabled = function(disabled) {
 // Picker instances keyed by container id
 var recipientPickers = {};
 
-function getOrCreatePicker(containerId) {
+function getOrCreatePicker(containerId, maxSelections) {
   if (!recipientPickers[containerId]) {
-    recipientPickers[containerId] = new RecipientPicker(containerId);
+    recipientPickers[containerId] = new RecipientPicker(containerId, maxSelections);
   }
   return recipientPickers[containerId];
 }
@@ -2663,7 +2698,7 @@ var event_recipients = [];
 // Helper: Convert bitmask to selected indices array
 function decodeBitmask(bitmask) {
   var selected = [];
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 30; i++) {
     if ((bitmask & (1 << i)) !== 0) selected.push(i);
   }
   return selected;
@@ -2674,7 +2709,7 @@ function encodeBitmask(selectedIndices) {
   var bitmask = 0;
   for (var i = 0; i < selectedIndices.length; i++) {
     var idx = parseInt(selectedIndices[i]);
-    if (!isNaN(idx) && idx >= 0 && idx < 5) {
+    if (!isNaN(idx) && idx >= 0 && idx < 30) {
       bitmask |= (1 << idx);
     }
   }
@@ -2696,14 +2731,12 @@ function loadRecipients(){
         }
       });
       refreshRecipientSelections();
-      // Refresh heartbeat contacts
-      var hbSel = document.getElementById('hb_contacts');
-      if (hbSel) {
-        var hbMask = 0;
-        eachNode(document.querySelectorAll('.hb-contact-cb:checked'), function(cb) {
-          hbMask |= (1 << parseInt(cb.value, 10));
-        });
-        populateHbContacts(hbMask);
+      // Feed heartbeat picker
+      if (document.getElementById('hb_contacts')) {
+        var hbPicker = getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED);
+        var prevMask = hbPicker.getMask();
+        hbPicker.setContacts(d.recipients);
+        if (prevMask) hbPicker.setMask(prevMask);
       }
     }
   }).catch(e=>{ if(e !== 'auth') console.log('recipients load failed', e); });
@@ -3337,33 +3370,9 @@ function loadHeartbeatConfig() {
 
     updateHbFreqUI();
 
-    // Populate contacts
-    populateHbContacts(cfg.selected_contacts || 0);
+    // Populate contacts via picker
+    getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED).setMask(cfg.selected_contacts || 0);
   }).catch(function(e) { console.log('heartbeat config load failed', e); });
-}
-
-function populateHbContacts(selectedMask) {
-  var container = document.getElementById('hb_contacts');
-  if (!container) return;
-  if (!event_recipients || event_recipients.length === 0) {
-    container.innerHTML = '<div style="color:#999">(no recipients configured)</div>';
-    return;
-  }
-  container.innerHTML = '';
-  event_recipients.forEach(function(r, idx) {
-    if (!r.enabled) return;
-    var lbl = document.createElement('label');
-    lbl.style.cssText = 'display:block;margin-bottom:6px;cursor:pointer;font-size:13px';
-    var cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'hb-contact-cb';
-    cb.value = idx;
-    cb.style.marginRight = '8px';
-    cb.checked = !!((selectedMask) & (1 << idx));
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode((r.name || '-') + ' (' + (r.number || '-') + ')'));
-    container.appendChild(lbl);
-  });
 }
 
 function saveHeartbeatConfig() {
@@ -3375,10 +3384,7 @@ function saveHeartbeatConfig() {
     daysMask |= (1 << parseInt(cb.value, 10));
   });
 
-  var contactsMask = 0;
-  eachNode(document.querySelectorAll('.hb-contact-cb:checked'), function(cb) {
-    contactsMask |= (1 << parseInt(cb.value, 10));
-  });
+  var contactsMask = getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED).getMask();
 
   var t1 = (document.getElementById('hb_time1').value || '00:00').split(':');
   var t2 = (document.getElementById('hb_time2').value || '00:00').split(':');

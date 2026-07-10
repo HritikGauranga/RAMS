@@ -996,7 +996,7 @@ void Modem_task(void *pvParameters) {
         String msg = buildSystemStatusSMS();
         for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
           if (!rec.items[i].enabled) continue;
-          if (!(hbCfg.selected_contacts & (1 << i))) continue;
+          if (!(hbCfg.selected_contacts & (1UL << i))) continue;
           String number = String(rec.items[i].number);
           if (number.length() == 0) continue;
           String normalized;

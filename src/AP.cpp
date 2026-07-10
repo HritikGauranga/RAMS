@@ -1455,6 +1455,24 @@ static const char *htmlPage() {
   .stat .value{font-weight:700;margin-top:6px;font-size:15px}
   @media(max-width:900px){.grid{grid-template-columns:1fr}.sidebar{display:none}}
 
+  /* RecipientPicker */
+  .rp-wrap{border:1px solid #ccc;border-radius:4px;background:#fff;font-size:13px}
+  .rp-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;min-height:38px;align-items:center}
+  .rp-chip{display:inline-flex;align-items:center;gap:4px;background:#e8f0fe;color:#1565c0;border:1px solid #c5d8fb;border-radius:4px;padding:3px 8px;font-size:12px;font-weight:600}
+  .rp-chip-x{background:none;border:none;cursor:pointer;color:#1565c0;font-size:14px;line-height:1;padding:0 0 0 2px;font-weight:700}
+  .rp-chip-x:hover{color:#c62828}
+  .rp-footer{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-top:1px solid #eee;background:#fafafa;border-radius:0 0 4px 4px}
+  .rp-counter{font-size:11px;color:#888}
+  .rp-toggle{background:none;border:none;cursor:pointer;color:#1565c0;font-size:12px;font-weight:600;padding:0}
+  .rp-toggle:hover{text-decoration:underline}
+  .rp-panel{border-top:1px solid #eee;padding:8px 10px}
+  .rp-search{width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;margin-bottom:6px}
+  .rp-list{max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+  .rp-item{display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer;border-radius:3px}
+  .rp-item:hover{background:#f0f4ff}
+  .rp-item input{width:15px;height:15px;cursor:pointer;flex-shrink:0}
+  .rp-item span{font-size:12px;color:#333}
+  .rp-empty{font-size:12px;color:#999;padding:4px 0}
   /* System Config form layout */
   .form-section{margin-top:14px;padding-top:8px;border-top:0}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
@@ -1665,11 +1683,8 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
-                  <div id="di_recipients_select"
-                  style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
-                  <div style="color:#999">(no recipients configured)</div>
-                  </div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <div id="di_recipients_select"></div>
                 </div>
               </div>
               
@@ -1867,10 +1882,8 @@ static const char *htmlPage() {
               <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
                 <h3 style="font-size:14px;font-weight:600;margin:0 0 14px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Select Contact</h3>
                 <div>
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm (checkbox)</label>
-                  <div id="ai_recipients_select" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background-color:#fff;min-height:80px">
-                  <div style="color:#999">(no recipients configured)</div>
-                  </div>
+                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Notify Recipients on Alarm</label>
+                  <div id="ai_recipients_select"></div>
                 </div>
               </div>
               
@@ -2352,6 +2365,207 @@ function loadDashboard(){
   }).catch(e=>{ if(e !== 'auth') console.log('dashboard load failed', e); });
 }
 
+// ---------------------------------------------------------------------------
+// RecipientPicker — reusable chip+collapsible picker (max 5 selections)
+// ---------------------------------------------------------------------------
+var MAX_PICKER_SELECTIONS = 5;
+
+function RecipientPicker(containerId) {
+  this.containerId = containerId;
+  this.contacts = [];   // [{idx, name, number}] — enabled contacts only
+  this.selected = [];   // array of contact idx (integers)
+  this.disabled = false;
+  this.expanded = false;
+  this._render();
+}
+
+RecipientPicker.prototype._container = function() {
+  return document.getElementById(this.containerId);
+};
+
+RecipientPicker.prototype._render = function() {
+  var el = this._container();
+  if (!el) return;
+  el.innerHTML = '';
+  var wrap = document.createElement('div');
+  wrap.className = 'rp-wrap';
+
+  // Chips row
+  var chips = document.createElement('div');
+  chips.className = 'rp-chips';
+  if (this.selected.length === 0) {
+    var ph = document.createElement('span');
+    ph.style.cssText = 'color:#aaa;font-size:12px';
+    ph.textContent = 'No recipients selected';
+    chips.appendChild(ph);
+  } else {
+    var self = this;
+    this.selected.forEach(function(idx) {
+      var c = self._contactByIdx(idx);
+      if (!c) return;
+      var chip = document.createElement('span');
+      chip.className = 'rp-chip';
+      chip.textContent = c.name || c.number;
+      var x = document.createElement('button');
+      x.className = 'rp-chip-x';
+      x.type = 'button';
+      x.innerHTML = '&times;';
+      x.title = 'Remove';
+      if (!self.disabled) {
+        x.addEventListener('click', function() { self._deselect(idx); });
+      } else {
+        x.disabled = true;
+      }
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+  }
+  wrap.appendChild(chips);
+
+  // Footer: counter + toggle button
+  var footer = document.createElement('div');
+  footer.className = 'rp-footer';
+  var counter = document.createElement('span');
+  counter.className = 'rp-counter';
+  counter.textContent = 'Selected: ' + this.selected.length + ' / ' + MAX_PICKER_SELECTIONS;
+  footer.appendChild(counter);
+  if (!this.disabled) {
+    var toggle = document.createElement('button');
+    toggle.className = 'rp-toggle';
+    toggle.type = 'button';
+    toggle.textContent = this.expanded ? '\u25b2 Close' : '+ Add Recipients \u25bc';
+    var self = this;
+    toggle.addEventListener('click', function() {
+      self.expanded = !self.expanded;
+      self._render();
+    });
+    footer.appendChild(toggle);
+  }
+  wrap.appendChild(footer);
+
+  // Collapsible panel
+  if (this.expanded && !this.disabled) {
+    var panel = document.createElement('div');
+    panel.className = 'rp-panel';
+
+    var search = document.createElement('input');
+    search.className = 'rp-search';
+    search.type = 'text';
+    search.placeholder = 'Search contacts...';
+    var self = this;
+    search.addEventListener('input', function() { self._renderList(list, this.value); });
+    panel.appendChild(search);
+
+    var list = document.createElement('div');
+    list.className = 'rp-list';
+    this._renderList(list, '');
+    panel.appendChild(list);
+    wrap.appendChild(panel);
+
+    // Focus search after render
+    setTimeout(function() { search.focus(); }, 0);
+  }
+
+  el.appendChild(wrap);
+};
+
+RecipientPicker.prototype._renderList = function(listEl, query) {
+  listEl.innerHTML = '';
+  var q = (query || '').toLowerCase();
+  var self = this;
+  var shown = 0;
+  this.contacts.forEach(function(c) {
+    var label = (c.name || '') + ' ' + (c.number || '');
+    if (q && label.toLowerCase().indexOf(q) < 0) return;
+    shown++;
+    var isChecked = self.selected.indexOf(c.idx) >= 0;
+    var atMax = self.selected.length >= MAX_PICKER_SELECTIONS;
+    var item = document.createElement('label');
+    item.className = 'rp-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = isChecked;
+    cb.disabled = !isChecked && atMax;
+    cb.addEventListener('change', function() {
+      if (this.checked) self._select(c.idx);
+      else self._deselect(c.idx);
+    });
+    var txt = document.createElement('span');
+    txt.textContent = (c.name || '-') + ' (' + (c.number || '-') + ')';
+    if (!isChecked && atMax) txt.style.color = '#bbb';
+    item.appendChild(cb);
+    item.appendChild(txt);
+    listEl.appendChild(item);
+  });
+  if (shown === 0) {
+    var empty = document.createElement('div');
+    empty.className = 'rp-empty';
+    empty.textContent = this.contacts.length === 0 ? '(no recipients configured)' : 'No matches';
+    listEl.appendChild(empty);
+  }
+};
+
+RecipientPicker.prototype._contactByIdx = function(idx) {
+  for (var i = 0; i < this.contacts.length; i++) {
+    if (this.contacts[i].idx === idx) return this.contacts[i];
+  }
+  return null;
+};
+
+RecipientPicker.prototype._select = function(idx) {
+  if (this.selected.indexOf(idx) >= 0) return;
+  if (this.selected.length >= MAX_PICKER_SELECTIONS) return;
+  this.selected.push(idx);
+  this._render();
+};
+
+RecipientPicker.prototype._deselect = function(idx) {
+  this.selected = this.selected.filter(function(i) { return i !== idx; });
+  this._render();
+};
+
+RecipientPicker.prototype.setContacts = function(allRecipients) {
+  // allRecipients: raw array from API (index = position in array)
+  this.contacts = [];
+  for (var i = 0; i < allRecipients.length; i++) {
+    if (allRecipients[i].enabled) {
+      this.contacts.push({ idx: i, name: allRecipients[i].name, number: allRecipients[i].number });
+    }
+  }
+  // Remove any selected indices that no longer exist
+  var self = this;
+  this.selected = this.selected.filter(function(idx) { return self._contactByIdx(idx) !== null; });
+  this._render();
+};
+
+RecipientPicker.prototype.setMask = function(bitmask) {
+  this.selected = decodeBitmask(bitmask);
+  // Keep only indices that exist in current contacts
+  var self = this;
+  this.selected = this.selected.filter(function(idx) { return self._contactByIdx(idx) !== null; });
+  this._render();
+};
+
+RecipientPicker.prototype.getMask = function() {
+  return encodeBitmask(this.selected);
+};
+
+RecipientPicker.prototype.setDisabled = function(disabled) {
+  this.disabled = disabled;
+  if (disabled) this.expanded = false;
+  this._render();
+};
+
+// Picker instances keyed by container id
+var recipientPickers = {};
+
+function getOrCreatePicker(containerId) {
+  if (!recipientPickers[containerId]) {
+    recipientPickers[containerId] = new RecipientPicker(containerId);
+  }
+  return recipientPickers[containerId];
+}
+
 var di_configs = [];
 
 function loadDIConfig(){
@@ -2386,19 +2600,9 @@ function switchDI(index){
   document.getElementById('di_alarm_msg').value = cfg.alarm_message || '';
   document.getElementById('di_return_msg').value = cfg.return_message || '';
   
-  // Set selected recipients based on bitmask
-  var di_sel = document.getElementById('di_recipients_select');
-  if (di_sel) {
-  var selectedIndices =
-  decodeBitmask(cfg.selected_contacts || 0);
-  eachNode(di_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
-      cb.checked =
-        selectedIndices.indexOf(
-          parseInt(cb.value, 10)
-        ) >= 0;
-    });
-}
-  
+  // Set selected recipients via picker
+  getOrCreatePicker('di_recipients_select').setMask(cfg.selected_contacts || 0);
+
   window.current_di_index = index;
   localStorage.setItem('selectedDIIndex', index);
   updateDIFieldsState();
@@ -2408,10 +2612,9 @@ function updateDIFieldsState(){
   var enabled = document.getElementById('di_enabled').checked;
   var fields = ['di_name','di_type','di_tta','di_ttr','di_alarm_sms','di_return_sms','di_alarm_msg','di_return_msg'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
-  var di_sel = document.getElementById('di_recipients_select');
-  if (di_sel) eachNode(di_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
+  getOrCreatePicker('di_recipients_select').setDisabled(!enabled);
   var saveBtn = document.querySelector('#digital .btn.primary');
-  if (saveBtn) saveBtn.disabled = false; // Save is always allowed (to save enabled=false)
+  if (saveBtn) saveBtn.disabled = false;
 }
 
 function saveDIConfig(){
@@ -2428,17 +2631,9 @@ function saveDIConfig(){
   form_data.append('alarm_message', document.getElementById('di_alarm_msg').value.trim());
   form_data.append('return_message', document.getElementById('di_return_msg').value.trim());
   
-  // Encode selected recipients into bitmask
-  var di_sel = document.getElementById('di_recipients_select');
-var selectedIndices = [];
-if (di_sel) {
-  eachNode(di_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
-    selectedIndices.push(cb.value);
-  });
-}
-var bitmask = encodeBitmask(selectedIndices);
-form_data.append('selected_contacts', bitmask);
-  
+  var bitmask = getOrCreatePicker('di_recipients_select').getMask();
+  form_data.append('selected_contacts', bitmask);
+
   var status_el = document.getElementById('di_status');
   fetch('/api/digital-input-config', { method:'POST', body:form_data })
     .then(r=>r.json())
@@ -2486,7 +2681,7 @@ function encodeBitmask(selectedIndices) {
   return bitmask;
 }
 
-// Load recipients and populate all three dropdowns
+// Load recipients and feed all pickers
 function loadRecipients(){
   return fetch('/api/contacts/recipients').then(r=>{
     if(r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
@@ -2494,38 +2689,14 @@ function loadRecipients(){
   }).then(d=>{
     if (d.recipients && Array.isArray(d.recipients)) {
       event_recipients = d.recipients;
-      var di_sel = document.getElementById('di_recipients_select');
-      var ai_sel = document.getElementById('ai_recipients_select');
-      var relay_sel = document.getElementById('relay_recipients_select');
-      
-      // Clear existing options and rebuild
-      [di_sel, ai_sel, relay_sel].forEach(function(sel) {
-        if (!sel) return;
-        sel.innerHTML = '';
-        if (d.recipients.length === 0) {
-        sel.innerHTML =
-        '<div style="color:#999">(no recipients configured)</div>';
-        } else {
-          d.recipients.forEach(function(r, idx) {
-          if (!r.enabled) return;
-          var label = document.createElement('label');
-          label.style.display = 'block';
-          label.style.marginBottom = '6px';
-          label.style.cursor = 'pointer';
-
-          var cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.className = 'recipient-checkbox';
-          cb.value = idx;
-          cb.style.marginRight = '8px';
-          label.appendChild(cb);
-          label.appendChild(document.createTextNode((r.name || '-') + ' (' + (r.number || '-') + ')'));
-          sel.appendChild(label);
-          });
+      // Feed each picker with the updated contact list (preserves current selection)
+      ['di_recipients_select', 'ai_recipients_select'].forEach(function(id) {
+        if (document.getElementById(id)) {
+          getOrCreatePicker(id).setContacts(d.recipients);
         }
       });
       refreshRecipientSelections();
-      // Refresh heartbeat contacts if sysconfig tab is visible
+      // Refresh heartbeat contacts
       var hbSel = document.getElementById('hb_contacts');
       if (hbSel) {
         var hbMask = 0;
@@ -2539,18 +2710,18 @@ function loadRecipients(){
 }
 
 function refreshRecipientSelections(){
-  if (di_configs && di_configs.length > 0 && typeof switchDI === 'function') {
+  // Re-apply saved bitmasks so chips reflect the current contact list
+  if (di_configs && di_configs.length > 0) {
     var diIndex = parseInt(window.current_di_index !== undefined ? window.current_di_index : ((document.getElementById('di_selector') || {}).value || 0));
-    if (diIndex >= 0 && diIndex < di_configs.length) switchDI(diIndex);
+    if (diIndex >= 0 && diIndex < di_configs.length) {
+      getOrCreatePicker('di_recipients_select').setMask(di_configs[diIndex].selected_contacts || 0);
+    }
   }
-  if (ai_configs && ai_configs.length > 0 && typeof switchAI === 'function') {
+  if (ai_configs && ai_configs.length > 0) {
     var aiIndex = parseInt(window.current_ai_index !== undefined ? window.current_ai_index : ((document.getElementById('ai_selector') || {}).value || 0));
-    if (aiIndex >= 0 && aiIndex < ai_configs.length) switchAI(aiIndex);
-  }
-  // DO recipients are refreshed by loadDOConfig chaining; only refresh here if do_configs already loaded
-  if (do_configs && do_configs.length > 0 && typeof switchDO === 'function') {
-    var doIndex = parseInt(window.current_do_index !== undefined ? window.current_do_index : ((document.getElementById('do_selector') || {}).value || 0));
-    if (doIndex >= 0 && doIndex < do_configs.length) switchDO(doIndex);
+    if (aiIndex >= 0 && aiIndex < ai_configs.length) {
+      getOrCreatePicker('ai_recipients_select').setMask(ai_configs[aiIndex].selected_contacts || 0);
+    }
   }
 }
 
@@ -2640,21 +2811,9 @@ function switchAI(index){
   document.getElementById('ai_alarm_msg').value = cfg.alarm_message || '';
   document.getElementById('ai_return_msg').value = cfg.return_message || '';
   
-  // Set selected recipients based on bitmask
-  var ai_sel = document.getElementById('ai_recipients_select');
+  // Set selected recipients via picker
+  getOrCreatePicker('ai_recipients_select').setMask(cfg.selected_contacts || 0);
 
-if (ai_sel) {
-  var selectedIndices =
-    decodeBitmask(cfg.selected_contacts || 0);
-
-  eachNode(ai_sel.querySelectorAll('.recipient-checkbox'), function(cb) {
-      cb.checked =
-        selectedIndices.indexOf(
-          parseInt(cb.value, 10)
-        ) >= 0;
-    });
-}
-  
   window.current_ai_index = index;
   localStorage.setItem('selectedAIIndex', index);
   updateAIFieldsState();
@@ -2691,8 +2850,7 @@ function updateAIFieldsState(){
   var fields = ['ai_name','ai_unit_select','ai_unit_custom','ai_scale_low','ai_scale_high','ai_offset','ai_set_point','ai_reset_point','ai_tta','ai_ttr','ai_alarm_sms','ai_return_sms','ai_alarm_msg','ai_return_msg'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.disabled=!enabled; });
   eachNode(document.querySelectorAll('input[name="ai_alarm_type"]'), function(r){ r.disabled=!enabled; });
-  var ai_sel = document.getElementById('ai_recipients_select');
-  if (ai_sel) eachNode(ai_sel.querySelectorAll('input'), function(cb){ cb.disabled=!enabled; });
+  getOrCreatePicker('ai_recipients_select').setDisabled(!enabled);
 }
 
 function saveAIConfig(){
@@ -2743,17 +2901,9 @@ function saveAIConfig(){
   form_data.append('alarm_message', document.getElementById('ai_alarm_msg').value.trim());
   form_data.append('return_message', document.getElementById('ai_return_msg').value.trim());
   
-  // Encode selected recipients into bitmask
-  var ai_sel = document.getElementById('ai_recipients_select');
-var selectedIndices = [];
-if (ai_sel) {
-  eachNode(ai_sel.querySelectorAll('.recipient-checkbox:checked'), function(cb) {
-    selectedIndices.push(cb.value);
-  });
-}
-var bitmask = encodeBitmask(selectedIndices);
-form_data.append('selected_contacts', bitmask);
-  
+  var bitmask = getOrCreatePicker('ai_recipients_select').getMask();
+  form_data.append('selected_contacts', bitmask);
+
   var status_el = document.getElementById('ai_status');
   fetch('/api/analog-input-config', { method:'POST', body:form_data })
     .then(r=>r.json())

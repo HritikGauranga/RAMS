@@ -2183,7 +2183,7 @@ function switchToTab(tabName) {
   if (tabName === 'relays') loadDOConfig();
   if (tabName === 'sysconfig') { loadSystemConfig(); loadHeartbeatConfig(); }
   if (tabName === 'phones' && typeof loadPhones === 'function') loadPhones();
-  if (tabName === 'network' && typeof loadNetworkCfg === 'function') { loadNetworkCfg(); loadSIMConfig(); }
+  if (tabName === 'network') { if(typeof loadNetworkCfg === 'function') loadNetworkCfg(); if(typeof loadSIMConfig === 'function') loadSIMConfig(); }
 }
 
 function getStoredTab() {
@@ -2894,18 +2894,9 @@ function saveSystemConfig(){
     .catch(e=>showStatus('Save failed: '+e.message, false));
 }
 
-// Restore the last active tab after reloads.
-try {
-  switchToTab(getInitialTab());
-} catch(e) {
-  console.log('tab restore failed', e);
-}
-
 loadDashboard();
 setInterval(loadDashboard, 5000);
 loadRecipients();
-loadNetworkCfg();
-loadSIMConfig();
 </script>
 <script>
 var MAX_CONTACTS = 30;
@@ -3019,11 +3010,14 @@ function sanitizeIpInput(el){ if(!el) return; var cleaned = el.value.replace(/[^
 
 // Load SIM Configuration
 function loadSIMConfig() {
-  fetch('/api/sim-config').then(r=>r.json()).then(cfg=>{
-    if (cfg.service_provider) document.getElementById('sim_provider').value = cfg.service_provider;
-    if (cfg.phone_number) document.getElementById('sim_phone').value = cfg.phone_number;
-    if (cfg.relay_pin) document.getElementById('sim_relay_pin').value = cfg.relay_pin;
-  }).catch(e=>console.log('SIM config load failed', e));
+  fetch('/api/sim-config').then(r=>{
+    if(r.status===401){window.location='/login';return Promise.reject('auth');}
+    return r.json();
+  }).then(cfg=>{
+    document.getElementById('sim_provider').value = cfg.service_provider || '';
+    document.getElementById('sim_phone').value = cfg.phone_number || '';
+    document.getElementById('sim_relay_pin').value = cfg.relay_pin || '';
+  }).catch(e=>{ if(e!=='auth') console.log('SIM config load failed', e); });
 }
 
 // Save SIM Configuration
@@ -3255,6 +3249,12 @@ function saveHeartbeatConfig() {
     })
     .catch(function(e) { showSmallStatus('hb_status', 'Save failed: ' + e.message, false); });
 }
+
+// Restore tab after ALL functions are defined (both script blocks loaded)
+try { switchToTab(getInitialTab()); } catch(e) { console.log('tab restore failed', e); }
+loadDashboard();
+setInterval(loadDashboard, 5000);
+loadRecipients();
 </script>
 </body>
 </html>

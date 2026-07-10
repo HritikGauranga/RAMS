@@ -1479,7 +1479,7 @@ static const char *htmlPage() {
   .field{display:flex;flex-direction:column}
   .field.full{grid-column:1/-1}
   .field label{font-size:13px;color:#444;margin-bottom:6px}
-  .input{width:100%;padding:10px 12px;border:1px solid #dfe6ee;border-radius:8px;font-size:14px}
+  .input{width:100%;padding:6px 8px;border:1px solid #dfe6ee;border-radius:8px;font-size:12px;min-height:32px}
   .form-actions{margin-top:10px}
   @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
 </style>
@@ -1613,7 +1613,7 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
-                    <input type="text" id="di_name" placeholder="e.g. Main Door" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="di_name" placeholder="e.g. Main Door" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Type</label>
@@ -1668,12 +1668,12 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr;gap:14px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
-                    <input type="text" id="di_alarm_msg" placeholder="Message when alarm occurs" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="di_alarm_msg" placeholder="Message when alarm occurs" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
-                    <input type="text" id="di_return_msg" placeholder="Message when alarm clears" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="di_return_msg" placeholder="Message when alarm clears" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                 </div>
@@ -1724,7 +1724,7 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Input Name</label>
-                    <input type="text" id="ai_name" placeholder="e.g. Tank Level" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="ai_name" placeholder="e.g. Tank Level" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Engineering Unit</label>
@@ -1867,12 +1867,12 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr;gap:14px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Alarm Message</label>
-                    <input type="text" id="ai_alarm_msg" placeholder="e.g. HIGH TANK LEVEL" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="ai_alarm_msg" placeholder="e.g. HIGH TANK LEVEL" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Return Message</label>
-                    <input type="text" id="ai_return_msg" placeholder="e.g. TANK LEVEL RETURNED TO NORMAL" maxlength="63" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="ai_return_msg" placeholder="e.g. TANK LEVEL RETURNED TO NORMAL" maxlength="63" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                     <div style="font-size:11px;color:#999;margin-top:4px">Max 63 characters</div>
                   </div>
                 </div>
@@ -1923,7 +1923,7 @@ static const char *htmlPage() {
                 <div style="display:grid;grid-template-columns:1fr;gap:20px">
                   <div>
                     <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Output Name</label>
-                    <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                    <input type="text" id="do_name" placeholder="e.g. Siren, Beacon" maxlength="31" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
                   </div>
                 </div>
               </div>
@@ -2028,11 +2028,11 @@ static const char *htmlPage() {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">APN</label>
-                <input id="sim_provider" type="text" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <input id="sim_provider" type="text" placeholder="e.g., Vodafone, AT&T" maxlength="63" oninput="this.value=this.value.substring(0,63)" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SIM Phone Number</label>
-                <input id="sim_phone" type="text" placeholder="e.g., +1234567890" maxlength="19" oninput="let v=this.value.replace(/[^0-9+]/g,'');if(v.startsWith('+'))v='+'+v.substring(1).replace(/\+/g,'');else v=v.replace(/\+/g,'');this.value=v;" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <input id="sim_phone" type="text" placeholder="e.g., +1234567890" maxlength="19" oninput="let v=this.value.replace(/[^0-9+]/g,'');if(v.startsWith('+'))v='+'+v.substring(1).replace(/\+/g,'');else v=v.replace(/\+/g,'');this.value=v;" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">SMS Command PIN</label>
@@ -2053,11 +2053,11 @@ static const char *htmlPage() {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Name</label>
-                <input id="site_name" type="text" maxlength="63" oninput="if(this.value.length>63)this.value=this.value.slice(0,63)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+                <input id="site_name" type="text" maxlength="63" oninput="if(this.value.length>63)this.value=this.value.slice(0,63)" style="width:min(100%, 240px);max-width:240px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;min-height:32px">
               </div>
               <div style="grid-column:1/-1">
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Site Address</label>
-                <textarea id="site_address" rows="3" maxlength="127" oninput="if(this.value.length>127)this.value=this.value.slice(0,127)" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+                <textarea id="site_address" rows="2" maxlength="127" oninput="if(this.value.length>127)this.value=this.value.slice(0,127)" style="width:min(100%, 320px);max-width:320px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px;box-sizing:border-box;resize:vertical;min-height:64px"></textarea>
               </div>
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:13px">Time Zone</label>
@@ -3087,7 +3087,9 @@ function renderContactList(containerId, arr){
     row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0';
     var chk = document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=!!item.enabled;
     var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||'';
+    name.style.padding='6px 8px'; name.style.fontSize='12px'; name.style.minHeight='32px'; name.style.width='min(100%, 220px)'; name.style.maxWidth='220px';
     var num = document.createElement('input'); num.className='c_number input'; num.placeholder="+1234567890"; num.value=item.number||'';
+    num.style.padding='6px 8px'; num.style.fontSize='12px'; num.style.minHeight='32px'; num.style.width='min(100%, 220px)'; num.style.maxWidth='220px';
     num.oninput = function(){ this.value = this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value = this.value.replace(/\+/g,''); if(this.value.length>16) this.value = this.value.slice(0,16); };
     var del = document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick = function(){ row.remove(); };
     row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del);
@@ -3096,7 +3098,7 @@ function renderContactList(containerId, arr){
 }
 
 function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
-function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
+function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.style.padding='6px 8px'; name.style.fontSize='12px'; name.style.minHeight='32px'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.style.padding='6px 8px'; num.style.fontSize='12px'; num.style.minHeight='32px'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
 
 if (document.getElementById('phones') && document.getElementById('phones').style.display !== 'none') {
   loadPhones();

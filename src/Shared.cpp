@@ -38,7 +38,7 @@ struct IOConfigStore {
   RelayConfig relay[RELAY_OUTPUT_COUNT];
 };
 
-static constexpr uint16_t IO_CONFIG_VERSION = 5;
+static constexpr uint16_t IO_CONFIG_VERSION = 6;
 static bool loadIOConfigFromFile();
 static bool saveIOConfigToFile();
 
@@ -291,6 +291,24 @@ void Shared_init() {
                     hasValidNumber = true;
                   }
                 }
+              }
+            }
+            int smsIdx = obj.indexOf("\"sms_enabled\"");
+            if (smsIdx >= 0) {
+              int colon = obj.indexOf(':', smsIdx);
+              if (colon >= 0) {
+                String val = trimCopy(obj.substring(colon + 1));
+                c.sms_enabled = val.startsWith("true");
+              }
+            } else {
+              c.sms_enabled = true; // backward compat default
+            }
+            int callIdx = obj.indexOf("\"call_enabled\"");
+            if (callIdx >= 0) {
+              int colon = obj.indexOf(':', callIdx);
+              if (colon >= 0) {
+                String val = trimCopy(obj.substring(colon + 1));
+                c.call_enabled = val.startsWith("true");
               }
             }
             if (hasValidNumber) {
@@ -645,7 +663,10 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
     out.print("{\"enabled\":");
     out.print(filtered.items[i].enabled ? "true" : "false");
     out.print(",\"name\":\""); out.print(name); out.print("\"");
-    out.print(",\"number\":\""); out.print(num); out.print("\"}");
+    out.print(",\"number\":\""); out.print(num); out.print("\"");
+    out.print(",\"sms_enabled\":"); out.print(filtered.items[i].sms_enabled ? "true" : "false");
+    out.print(",\"call_enabled\":"); out.print(filtered.items[i].call_enabled ? "true" : "false");
+    out.print("}");
   }
   out.print("]}");
   out.close();
@@ -891,3 +912,120 @@ bool Shared_tickHeartbeat() {
   return !alreadyFired;
 }
 
+
+// ---------------------------------------------------------------------------
+// Alarm ACK state
+// ---------------------------------------------------------------------------
+constexpr size_t ALARM_ACK_COUNT = DIGITAL_INPUT_COUNT + ANALOG_INPUT_COUNT;
+static bool alarmAckState[ALARM_ACK_COUNT] = {};
+
+static size_t alarmAckIndex(AlarmSource src, size_t index) {
+  if (src == ALARM_SRC_DI) return index;
+  return DIGITAL_INPUT_COUNT + index;
+}
+
+bool Shared_setAlarmAck(AlarmSource src, size_t index, bool acked) {
+  size_t i = alarmAckIndex(src, index);
+  if (i >= ALARM_ACK_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  alarmAckState[i] = acked;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_getAlarmAck(AlarmSource src, size_t index, bool &out) {
+  size_t i = alarmAckIndex(src, index);
+  if (i >= ALARM_ACK_COUNT) return false;
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  out = alarmAckState[i];
+  Shared_unlockState();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Notification event queue (for voice call dispatch)
+// ---------------------------------------------------------------------------
+static NotificationEvent notifQueue[NOTIFICATION_QUEUE_DEPTH] = {};
+static size_t notifQueueHead = 0;
+static size_t notifQueueTail = 0;
+
+bool Shared_postNotificationEvent(const NotificationEvent &ev) {
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  size_t next = (notifQueueTail + 1) % NOTIFICATION_QUEUE_DEPTH;
+  if (next == notifQueueHead) {
+    notifQueueHead = (notifQueueHead + 1) % NOTIFICATION_QUEUE_DEPTH; // drop oldest
+  }
+  notifQueue[notifQueueTail] = ev;
+  notifQueue[notifQueueTail].valid = true;
+  notifQueueTail = next;
+  Shared_unlockState();
+  return true;
+}
+
+bool Shared_takeNotificationEvent(NotificationEvent &out) {
+  if (!Shared_lockState(pdMS_TO_TICKS(50))) return false;
+  if (notifQueueHead == notifQueueTail) {
+    Shared_unlockState();
+    return false;
+  }
+  out = notifQueue[notifQueueHead];
+  notifQueue[notifQueueHead].valid = false;
+  notifQueueHead = (notifQueueHead + 1) % NOTIFICATION_QUEUE_DEPTH;
+  Shared_unlockState();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Voice call settings
+// ---------------------------------------------------------------------------
+static const char *VOICE_CALL_CFG_PATH = "/voicecall.json";
+
+bool Shared_getVoiceCallSettings(VoiceCallSettings &out) {
+  out = { false, 30, 5 }; // defaults
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(500))) return true;
+  if (!LittleFS.exists(VOICE_CALL_CFG_PATH)) {
+    Shared_unlockFileSystem();
+    return true;
+  }
+  File f = LittleFS.open(VOICE_CALL_CFG_PATH, "r");
+  if (!f) { Shared_unlockFileSystem(); return true; }
+  String json = f.readString();
+  f.close();
+  Shared_unlockFileSystem();
+
+  auto readBool = [&](const char *key) -> bool {
+    String pat = String('"') + key + '"';
+    int ki = json.indexOf(pat);
+    if (ki < 0) return false;
+    int ci = json.indexOf(':', ki + pat.length());
+    if (ci < 0) return false;
+    String v = json.substring(ci + 1); v.trim();
+    return v.startsWith("true");
+  };
+  auto readUint16 = [&](const char *key) -> uint16_t {
+    String pat = String('"') + key + '"';
+    int ki = json.indexOf(pat);
+    if (ki < 0) return 0;
+    int ci = json.indexOf(':', ki + pat.length());
+    if (ci < 0) return 0;
+    return (uint16_t)json.substring(ci + 1).toInt();
+  };
+  out.enabled          = readBool("enabled");
+  out.ring_timeout_s   = readUint16("ring_timeout_s");
+  out.inter_call_delay_s = readUint16("inter_call_delay_s");
+  if (out.ring_timeout_s == 0)    out.ring_timeout_s = 30;
+  if (out.inter_call_delay_s == 0) out.inter_call_delay_s = 5;
+  return true;
+}
+
+bool Shared_saveVoiceCallSettings(const VoiceCallSettings &cfg) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  File f = LittleFS.open(VOICE_CALL_CFG_PATH, "w");
+  if (!f) { Shared_unlockFileSystem(); return false; }
+  f.printf("{\"enabled\":%s,\"ring_timeout_s\":%u,\"inter_call_delay_s\":%u}",
+           cfg.enabled ? "true" : "false",
+           cfg.ring_timeout_s, cfg.inter_call_delay_s);
+  f.close();
+  Shared_unlockFileSystem();
+  return true;
+}

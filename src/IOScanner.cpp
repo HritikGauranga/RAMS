@@ -1,6 +1,7 @@
 #include "IOScanner.h"
 #include "Shared.h"
 #include "Modem.h"
+#include "CallManager.h"
 #include <driver/adc.h>
 #include <esp_adc_cal.h>
 
@@ -187,7 +188,19 @@ static void processAnalogInput(size_t index) {
         Shared_setLastEventTime();
         
         if (!state.alarmSmsSent) {
-          sendAnalogAlarmSMS(index, cfg, engValue, true);
+          // Reset ACK state for this new alarm
+          Shared_setAlarmAck(ALARM_SRC_AI, index, false);
+          // Post unified notification event
+          NotificationEvent ev = {};
+          ev.source = ALARM_SRC_AI;
+          ev.index  = index;
+          ev.isAlarm = true;
+          ev.value  = engValue;
+          strncpy(ev.message, cfg.alarm_message, sizeof(ev.message) - 1);
+          if (ev.message[0] == '\0') snprintf(ev.message, sizeof(ev.message), "%s ALARM", cfg.name);
+          ev.selected_contacts = cfg.selected_contacts;
+          ev.valid = true;
+          Shared_postNotificationEvent(ev);
           state.alarmSmsSent = true;
         }
 
@@ -228,7 +241,18 @@ static void processAnalogInput(size_t index) {
           Shared_setAIAlarmState(index, false);
           Shared_setLastEventTime();
           
-          sendAnalogAlarmSMS(index, cfg, engValue, false);
+          {
+            NotificationEvent ev = {};
+            ev.source = ALARM_SRC_AI;
+            ev.index  = index;
+            ev.isAlarm = false;
+            ev.value  = engValue;
+            strncpy(ev.message, cfg.return_message, sizeof(ev.message) - 1);
+            if (ev.message[0] == '\0') snprintf(ev.message, sizeof(ev.message), "%s RETURN TO NORMAL", cfg.name);
+            ev.selected_contacts = cfg.selected_contacts;
+            ev.valid = true;
+            Shared_postNotificationEvent(ev);
+          }
 
           // Deactivate relay if configured
           for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {
@@ -315,9 +339,19 @@ static void processDigitalInput(size_t index) {
         if (!state.alarmSmsSent) {
           DigitalInputConfig smsCfg = {};
           Shared_getDigitalInputConfig(index, smsCfg);
-          if (smsCfg.alarm_sms_enabled) {
-            Shared_postDIPendingSMS(index, true);
-          }
+          // Reset ACK state for this new alarm
+          Shared_setAlarmAck(ALARM_SRC_DI, index, false);
+          // Post unified notification event (Modem task handles SMS + voice)
+          NotificationEvent ev = {};
+          ev.source = ALARM_SRC_DI;
+          ev.index  = index;
+          ev.isAlarm = true;
+          ev.value  = 0.0f;
+          strncpy(ev.message, smsCfg.alarm_message, sizeof(ev.message) - 1);
+          if (ev.message[0] == '\0') snprintf(ev.message, sizeof(ev.message), "%s ALARM", smsCfg.name);
+          ev.selected_contacts = smsCfg.selected_contacts;
+          ev.valid = true;
+          Shared_postNotificationEvent(ev);
           state.alarmSmsSent = true;
         }
 
@@ -355,8 +389,17 @@ static void processDigitalInput(size_t index) {
 
         DigitalInputConfig smsCfg = {};
         Shared_getDigitalInputConfig(index, smsCfg);
-        if (smsCfg.return_sms_enabled) {
-          Shared_postDIPendingSMS(index, false);
+        {
+          NotificationEvent ev = {};
+          ev.source = ALARM_SRC_DI;
+          ev.index  = index;
+          ev.isAlarm = false;
+          ev.value  = 0.0f;
+          strncpy(ev.message, smsCfg.return_message, sizeof(ev.message) - 1);
+          if (ev.message[0] == '\0') snprintf(ev.message, sizeof(ev.message), "%s RETURN TO NORMAL", smsCfg.name);
+          ev.selected_contacts = smsCfg.selected_contacts;
+          ev.valid = true;
+          Shared_postNotificationEvent(ev);
         }
 
         for (size_t r = 0; r < RELAY_OUTPUT_COUNT; ++r) {

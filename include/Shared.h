@@ -18,12 +18,44 @@ struct Contact {
   bool enabled;
   char name[32];
   char number[PHONE_NUMBER_LENGTH];
+  bool sms_enabled;   // receives SMS notifications
+  bool call_enabled;  // receives voice call notifications
 };
 
 struct ContactList {
   size_t count;
   Contact items[MAX_PHONE_PER_LIST];
 };
+
+// Alarm acknowledgement state (per DI/AI input)
+enum AlarmSource : uint8_t { ALARM_SRC_DI = 0, ALARM_SRC_AI = 1 };
+
+// Notification event posted by IOScanner, consumed by Modem task
+struct NotificationEvent {
+  AlarmSource source;   // DI or AI
+  size_t      index;    // input index
+  bool        isAlarm;  // true=alarm, false=return
+  float       value;    // analog value (AI only)
+  char        message[64]; // alarm or return message text
+  uint32_t    selected_contacts; // bitmask
+  bool        valid;
+};
+constexpr size_t NOTIFICATION_QUEUE_DEPTH = 8;
+bool Shared_postNotificationEvent(const NotificationEvent &ev);
+bool Shared_takeNotificationEvent(NotificationEvent &out);
+
+// Alarm ACK state
+bool Shared_setAlarmAck(AlarmSource src, size_t index, bool acked);
+bool Shared_getAlarmAck(AlarmSource src, size_t index, bool &out);
+
+// Voice call settings
+struct VoiceCallSettings {
+  bool     enabled;
+  uint16_t ring_timeout_s;    // seconds to wait for answer (default 30)
+  uint16_t inter_call_delay_s; // seconds between calls (default 5)
+};
+bool Shared_getVoiceCallSettings(VoiceCallSettings &out);
+bool Shared_saveVoiceCallSettings(const VoiceCallSettings &cfg);
 
 struct DigitalInputConfig {
   bool enabled;

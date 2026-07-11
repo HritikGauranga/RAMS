@@ -1,5 +1,6 @@
 #include "Modem.h"
 #include "Shared.h"
+#include "CallManager.h"
 #include <HardwareSerial.h>
 #include <LittleFS.h>
 #include <ETH.h>
@@ -596,6 +597,10 @@ static void checkAndProcessSMS() {
           processInputRequest(sender);
         } else if (upperBody.indexOf("GET RELAY") >= 0) {
           processRelayStatusRequest(sender);
+        } else if (upperBody.startsWith("ACK ") || upperBody == "ACK") {
+          if (isAuthorizedSender(sender)) {
+            CallManager_handleSmsAck(sender, body);
+          }
         } else {
           int cmdIdx = body.indexOf("Set Relay%");
           if (cmdIdx >= 0) {
@@ -628,6 +633,10 @@ static void checkAndProcessSMS() {
       processInputRequest(sender);
     } else if (upperBody.indexOf("GET RELAY") >= 0) {
       processRelayStatusRequest(sender);
+    } else if (upperBody.startsWith("ACK ") || upperBody == "ACK") {
+      if (isAuthorizedSender(sender)) {
+        CallManager_handleSmsAck(sender, body);
+      }
     } else {
       int cmdIdx = body.indexOf("Set Relay%");
       if (cmdIdx >= 0) {
@@ -957,6 +966,7 @@ void Modem_task(void *pvParameters) {
 
   // Blocking init — only affects core 0, core 1 tasks run freely
   initModem();
+  CallManager_init(SerialAT);
   Serial.println("[MODEM TASK] Init complete, starting SMS processing");
 
   for (;;) {
@@ -1008,16 +1018,51 @@ void Modem_task(void *pvParameters) {
       }
     }
 
-    // Drain DI SMS queue
-    DIPendingSMS diPending = {};
-    if (Shared_takeDIPendingSMS(diPending)) {
-      if (modemReady) dispatchDISMS(diPending);
+    // Drain unified notification event queue: SMS first, then enqueue voice calls
+    NotificationEvent notifEv = {};
+    if (Shared_takeNotificationEvent(notifEv)) {
+      if (modemReady) {
+        // 1. Send SMS to all selected contacts with sms_enabled
+        ContactList rec = {};
+        if (Shared_getRecipientContacts(rec) && rec.count > 0) {
+          String msg;
+          if (notifEv.source == ALARM_SRC_DI) {
+            DigitalInputConfig diCfg = {};
+            Shared_getDigitalInputConfig(notifEv.index, diCfg);
+            bool smsEnabled = notifEv.isAlarm ? diCfg.alarm_sms_enabled : diCfg.return_sms_enabled;
+            if (smsEnabled) {
+              msg = notifEv.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
+            }
+          } else {
+            AnalogInputConfig aiCfg = {};
+            Shared_getAnalogInputConfig(notifEv.index, aiCfg);
+            bool smsEnabled = notifEv.isAlarm ? aiCfg.alarm_sms_enabled : aiCfg.return_sms_enabled;
+            if (smsEnabled) {
+              msg = notifEv.isAlarm ? buildAnalogAlarmSMS(aiCfg, notifEv.value)
+                                    : buildAnalogReturnSMS(aiCfg, notifEv.value);
+            }
+          }
+          if (msg.length() > 0) {
+            for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+              if (!rec.items[i].enabled) continue;
+              if (!(notifEv.selected_contacts & (1UL << i))) continue;
+              if (!rec.items[i].sms_enabled) continue;
+              String normalized;
+              if (!normalizePhoneNumber(String(rec.items[i].number), normalized)) continue;
+              if (!modemReady) break;
+              sendSMS(normalized, msg);
+            }
+          }
+        }
+        // 2. Enqueue voice calls (only for alarm events, not return)
+        if (notifEv.isAlarm) {
+          CallManager_enqueue(notifEv);
+        }
+      }
     }
 
-    AIPendingSMS aiPending = {};
-    if (modemReady && Shared_takeAIPendingSMS(aiPending)) {
-      dispatchAISMS(aiPending);
-    }
+    // Tick CallManager state machine
+    CallManager_tick();
 
     if (now - lastSmsCheckMs >= 5000) {
       lastSmsCheckMs = now;

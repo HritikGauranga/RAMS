@@ -744,7 +744,9 @@ static void setupWebServerRoutes() {
       body += "{";
       body += "\"enabled\":" + String(cl.items[i].enabled ? "true" : "false") + ",";
       body += "\"name\":\"" + escapeJson(String(cl.items[i].name)) + "\",";
-      body += "\"number\":\"" + escapeJson(String(cl.items[i].number)) + "\"";
+      body += "\"number\":\"" + escapeJson(String(cl.items[i].number)) + "\",";
+      body += "\"sms_enabled\":" + String(cl.items[i].sms_enabled ? "true" : "false") + ",";
+      body += "\"call_enabled\":" + String(cl.items[i].call_enabled ? "true" : "false");
       body += "}";
     }
     body += "]}";
@@ -807,6 +809,18 @@ static void setupWebServerRoutes() {
         if (n.length() == 0) { String err = String("{\"error\":\"Empty phone number at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
         if (!isValidPhoneFormat(n)) { String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
         n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
+      }
+      // Parse sms_enabled (default true for backward compat)
+      int smsIdx = obj.indexOf("\"sms_enabled\"");
+      if (smsIdx >= 0) {
+        int sc = obj.indexOf(':', smsIdx);
+        if (sc >= 0) { String v = trimCopy(obj.substring(sc + 1)); c.sms_enabled = v.startsWith("true"); }
+      } else { c.sms_enabled = true; }
+      // Parse call_enabled
+      int callIdx = obj.indexOf("\"call_enabled\"");
+      if (callIdx >= 0) {
+        int sc = obj.indexOf(':', callIdx);
+        if (sc >= 0) { String v = trimCopy(obj.substring(sc + 1)); c.call_enabled = v.startsWith("true"); }
       }
       if (cl.count < MAX_PHONE_PER_LIST) cl.items[cl.count++] = c;
       pos = objEnd + 1;
@@ -1316,6 +1330,31 @@ static void setupWebServerRoutes() {
 
     String body = "{\"rssi\":" + String((int)rssi) + ",\"strength\":\"" + strength + "\"}";
     request->send(200, "application/json", body);
+  });
+
+  // Voice Call Settings endpoints
+  server->on("/api/voicecall-config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
+    VoiceCallSettings vcs = {};
+    Shared_getVoiceCallSettings(vcs);
+    String body = "{";
+    body += "\"enabled\":" + String(vcs.enabled ? "true" : "false") + ",";
+    body += "\"ring_timeout_s\":" + String(vcs.ring_timeout_s) + ",";
+    body += "\"inter_call_delay_s\":" + String(vcs.inter_call_delay_s);
+    body += "}";
+    request->send(200, "application/json", body);
+  });
+
+  server->on("/api/voicecall-config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
+    VoiceCallSettings vcs = {};
+    vcs.enabled = request->hasParam("enabled", true) && request->getParam("enabled", true)->value() == "1";
+    vcs.ring_timeout_s = request->hasParam("ring_timeout_s", true) ? (uint16_t)request->getParam("ring_timeout_s", true)->value().toInt() : 30;
+    vcs.inter_call_delay_s = request->hasParam("inter_call_delay_s", true) ? (uint16_t)request->getParam("inter_call_delay_s", true)->value().toInt() : 5;
+    if (vcs.ring_timeout_s == 0) vcs.ring_timeout_s = 30;
+    if (vcs.inter_call_delay_s == 0) vcs.inter_call_delay_s = 5;
+    if (!Shared_saveVoiceCallSettings(vcs)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
+    request->send(200, "application/json", "{\"success\":true}");
   });
 
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -1978,13 +2017,48 @@ static const char *htmlPage() {
         <div class="panel">
           <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">
             <h3 style="font-size:14px;font-weight:600;margin:0 0 6px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Event Recipients</h3>
-            <div style="font-size:12px;color:#999;margin-bottom:14px">Phone numbers accept digits and optional leading '+', 10-15 digits.</div>
-            <div id="rec_list"></div>
+            <div style="font-size:12px;color:#999;margin-bottom:14px">Phone numbers accept digits and optional leading '+', 10-15 digits. SMS/Call checkboxes control notification method per contact.</div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px" id="rec_table">
+              <thead><tr style="background:#f3f4f6">
+                <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Name</th>
+                <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Phone Number</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb">SMS</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb">Voice Call</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb">Action</th>
+              </tr></thead>
+              <tbody id="rec_list"></tbody>
+            </table>
             <button class="btn" onclick="addRecContact()" style="margin-top:10px">Add Recipient</button>
           </div>
           <div id="phones_status" style="display:none;margin-bottom:12px;padding:12px;border-radius:4px"></div>
           <div style="display:flex;gap:10px;margin-top:8px">
             <button class="btn primary" onclick="saveContacts()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Contacts</button>
+          </div>
+
+          <!-- Voice Call Settings -->
+          <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #e91e63">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 4px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Voice Call Settings</h3>
+            <div style="font-size:12px;color:#999;margin-bottom:14px">Global settings for voice call notifications. Per-contact SMS/Call is configured in the table above.</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+              <input type="checkbox" id="vc_enabled" style="width:18px;height:18px;cursor:pointer">
+              <label style="font-weight:500;font-size:14px;cursor:pointer;margin:0">Enable Voice Call Notifications</label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Ring Timeout (seconds)</label>
+                <input type="number" id="vc_ring_timeout" min="10" max="120" value="30" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <div style="font-size:11px;color:#999;margin-top:4px">Seconds to wait for answer before moving to next contact</div>
+              </div>
+              <div>
+                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Delay Between Calls (seconds)</label>
+                <input type="number" id="vc_inter_delay" min="1" max="60" value="5" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <div style="font-size:11px;color:#999;margin-top:4px">Pause between consecutive calls</div>
+              </div>
+            </div>
+          </div>
+          <div id="vc_status" style="display:none;margin-top:10px;padding:12px;border-radius:4px"></div>
+          <div style="display:flex;gap:10px;margin-top:12px">
+            <button class="btn primary" onclick="saveVoiceCallConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Voice Call Settings</button>
           </div>
         </div>
       </div>
@@ -3088,6 +3162,7 @@ function loadPhones(){
   fetch('/api/contacts/recipients').then(r=>{ if(r.status===401){window.location='/login';return Promise.reject('auth')} return r.json(); }).then(d=>{
     if (d.recipients && Array.isArray(d.recipients)) renderContactList('rec_list', d.recipients);
   }).catch(e=>{ if(e!=='auth') console.log('recipients load failed', e); });
+  loadVoiceCallConfig();
 }
 
 function saveContacts(){
@@ -3096,8 +3171,9 @@ function saveContacts(){
   eachNode(recEls, function(el){
     var name = (el.querySelector('.c_name')||{}).value || '';
     var num = (el.querySelector('.c_number')||{}).value || '';
-    var en = !!(el.querySelector('.c_enabled')||{}).checked;
-    recArr.push({enabled:en, name:name, number:num});
+    var smsEn = !!(el.querySelector('.c_sms_enabled')||{}).checked;
+    var callEn = !!(el.querySelector('.c_call_enabled')||{}).checked;
+    recArr.push({enabled:true, name:name, number:num, sms_enabled:smsEn, call_enabled:callEn});
   });
 
   var phoneValid = function(n){ if(!n) return true; var m = n.match(/^\+?[0-9]{10,15}$/); return !!m; };
@@ -3116,22 +3192,66 @@ function renderContactList(containerId, arr){
   el.innerHTML = '';
   for (var idx = 0; idx < arr.length && idx < MAX_CONTACTS; idx++) {
     var item = arr[idx];
-    var row = document.createElement('div'); row.className = 'contact-row';
-    row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0';
-    var chk = document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=!!item.enabled;
-    var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||'';
-    name.style.padding='6px 8px'; name.style.fontSize='12px'; name.style.minHeight='32px'; name.style.width='min(100%, 220px)'; name.style.maxWidth='220px';
-    var num = document.createElement('input'); num.className='c_number input'; num.placeholder="+1234567890"; num.value=item.number||'';
-    num.style.padding='6px 8px'; num.style.fontSize='12px'; num.style.minHeight='32px'; num.style.width='min(100%, 220px)'; num.style.maxWidth='220px';
-    num.oninput = function(){ this.value = this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value = this.value.replace(/\+/g,''); if(this.value.length>16) this.value = this.value.slice(0,16); };
-    var del = document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick = function(){ row.remove(); };
-    row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del);
-    el.appendChild(row);
+    el.appendChild(makeContactRow(item));
   }
 }
 
-function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } renderContactListAppend(el); }
-function renderContactListAppend(el){ var item={enabled:true,name:'',number:''}; var row = document.createElement('div'); row.className = 'contact-row'; row.style.display='flex'; row.style.gap='8px'; row.style.margin='6px 0'; var chk=document.createElement('input'); chk.type='checkbox'; chk.className='c_enabled'; chk.checked=true; var name=document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.style.padding='6px 8px'; name.style.fontSize='12px'; name.style.minHeight='32px'; var num=document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.style.padding='6px 8px'; num.style.fontSize='12px'; num.style.minHeight='32px'; num.oninput=function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); }; var del=document.createElement('button'); del.className='btn'; del.textContent='Remove'; del.onclick=function(){ row.remove(); }; row.appendChild(chk); row.appendChild(name); row.appendChild(num); row.appendChild(del); el.appendChild(row); }
+function makeContactRow(item) {
+  item = item || {enabled:true, name:'', number:'', sms_enabled:true, call_enabled:false};
+  var row = document.createElement('tr'); row.className = 'contact-row';
+  // Name
+  var tdName = document.createElement('td'); tdName.style.padding='6px 8px';
+  var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||'';
+  name.style.cssText='padding:5px 7px;font-size:12px;width:140px;border:1px solid #ccc;border-radius:4px';
+  tdName.appendChild(name); row.appendChild(tdName);
+  // Number
+  var tdNum = document.createElement('td'); tdNum.style.padding='6px 8px';
+  var num = document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.value=item.number||'';
+  num.style.cssText='padding:5px 7px;font-size:12px;width:150px;border:1px solid #ccc;border-radius:4px';
+  num.oninput = function(){ this.value=this.value.replace(/[^0-9+]/g,''); if(this.value.indexOf('+')>0) this.value=this.value.replace(/\+/g,''); if(this.value.length>16) this.value=this.value.slice(0,16); };
+  tdNum.appendChild(num); row.appendChild(tdNum);
+  // SMS checkbox
+  var tdSms = document.createElement('td'); tdSms.style.cssText='padding:6px 8px;text-align:center';
+  var smsChk = document.createElement('input'); smsChk.type='checkbox'; smsChk.className='c_sms_enabled';
+  smsChk.checked = (item.sms_enabled !== false); // default true
+  smsChk.style.cssText='width:16px;height:16px;cursor:pointer';
+  tdSms.appendChild(smsChk); row.appendChild(tdSms);
+  // Call checkbox
+  var tdCall = document.createElement('td'); tdCall.style.cssText='padding:6px 8px;text-align:center';
+  var callChk = document.createElement('input'); callChk.type='checkbox'; callChk.className='c_call_enabled';
+  callChk.checked = !!item.call_enabled;
+  callChk.style.cssText='width:16px;height:16px;cursor:pointer';
+  tdCall.appendChild(callChk); row.appendChild(tdCall);
+  // Remove button
+  var tdDel = document.createElement('td'); tdDel.style.cssText='padding:6px 8px;text-align:center';
+  var del = document.createElement('button'); del.className='btn'; del.textContent='Remove';
+  del.style.cssText='padding:4px 10px;font-size:12px';
+  del.onclick = function(){ row.remove(); };
+  tdDel.appendChild(del); row.appendChild(tdDel);
+  return row;
+}
+
+function addRecContact(){ var el=document.getElementById('rec_list'); if(!el) return; var cnt = el.querySelectorAll('.contact-row').length; if(cnt >= MAX_CONTACTS){ showSmallStatus('phones_status','Max ' + MAX_CONTACTS + ' contacts allowed', false); return; } el.appendChild(makeContactRow(null)); }
+
+function loadVoiceCallConfig(){
+  fetch('/api/voicecall-config').then(r=>r.json()).then(function(cfg){
+    var en = document.getElementById('vc_enabled'); if(en) en.checked = !!cfg.enabled;
+    var rt = document.getElementById('vc_ring_timeout'); if(rt) rt.value = cfg.ring_timeout_s || 30;
+    var id = document.getElementById('vc_inter_delay'); if(id) id.value = cfg.inter_call_delay_s || 5;
+  }).catch(function(e){ console.log('voicecall config load failed', e); });
+}
+
+function saveVoiceCallConfig(){
+  var p = new URLSearchParams();
+  p.append('enabled', document.getElementById('vc_enabled').checked ? '1' : '0');
+  p.append('ring_timeout_s', document.getElementById('vc_ring_timeout').value || '30');
+  p.append('inter_call_delay_s', document.getElementById('vc_inter_delay').value || '5');
+  fetch('/api/voicecall-config', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
+    .then(r=>r.json()).then(function(d){
+      if(d.success) showSmallStatus('vc_status','Voice call settings saved',true);
+      else showSmallStatus('vc_status',d.error||'Save failed',false);
+    }).catch(function(e){ showSmallStatus('vc_status','Save failed',false); });
+}
 
 if (document.getElementById('phones') && document.getElementById('phones').style.display !== 'none') {
   loadPhones();

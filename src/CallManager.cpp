@@ -165,31 +165,56 @@ static void hangUp() {
 // EC200U TTS: AT+QTTS=<mode>,<text>
 //   mode 1 = play immediately during active call
 // Returns true if the modem accepted the command.
-static bool playTTS(const char *text) {
-  // Sanitise: strip double-quotes to avoid breaking the AT command string
-  String msg = String(text);
-  msg.replace("\"", "'");
-  if (msg.length() > 200) msg = msg.substring(0, 200);
 
-  // Step 1: Convert text to speech and save to UFS file.
-  // AT+QWTTS=<save_flag>,<channel>,<mode>,<text>
-  //   save_flag=1 (save to UFS:tts_out.wav)
-  //   channel=0
-  //   mode=0 (English)
-  String genCmd = String("AT+QWTTS=1,0,0,\"") + msg + "\"";
-  String genResp = sendAT(genCmd, 8000, false);
-  if (genResp.indexOf("OK") < 0) {
-    Serial.println("[CALL] AT+QWTTS failed: " + genResp);
+static bool playTTS(const char *text)
+{
+    String msg(text);
+    msg.replace("\"", "'");
+    if (msg.length() > 200)
+        msg = msg.substring(0, 200);
+
+    String cmd =
+        "AT+QWTTS=1,0,0,\"" + msg + "\"";
+
+    String resp = sendAT(cmd, 15000, false);
+
+    if (resp.indexOf("OK") >= 0)
+    {
+        Serial.println("[CALL] TTS command accepted");
+        return true;
+    }
+
+    Serial.println("[CALL] TTS failed:");
+    Serial.println(resp);
+
     return false;
-  }
-
-  // Step 2: Play the generated file through the voice call codec path.
-  // AT+QAUDPLAY routes audio through the active call's voice channel.
-  String playResp = sendAT("AT+QAUDPLAY=\"UFS:tts_out.wav\"", 5000, false);
-  bool ok = playResp.indexOf("OK") >= 0;
-  if (!ok) Serial.println("[CALL] AT+QAUDPLAY failed: " + playResp);
-  return ok;
 }
+
+// static bool playTTS(const char *text) {
+//   // Sanitise: strip double-quotes to avoid breaking the AT command string
+//   String msg = String(text);
+//   msg.replace("\"", "'");
+//   if (msg.length() > 200) msg = msg.substring(0, 200);
+
+//   // Step 1: Convert text to speech and save to UFS file.
+//   // AT+QWTTS=<save_flag>,<channel>,<mode>,<text>
+//   //   save_flag=1 (save to UFS:tts_out.wav)
+//   //   channel=0
+//   //   mode=0 (English)
+//   String genCmd = String("AT+QWTTS=1,0,0,\"") + msg + "\"";
+//   String genResp = sendAT(genCmd, 8000, false);
+//   if (genResp.indexOf("OK") < 0) {
+//     Serial.println("[CALL] AT+QWTTS failed: " + genResp);
+//     return false;
+//   }
+
+//   // Step 2: Play the generated file through the voice call codec path.
+//   // AT+QAUDPLAY routes audio through the active call's voice channel.
+//   String playResp = sendAT("AT+QAUDPLAY=\"UFS:tts_out.wav\"", 5000, false);
+//   bool ok = playResp.indexOf("OK") >= 0;
+//   if (!ok) Serial.println("[CALL] AT+QAUDPLAY failed: " + playResp);
+//   return ok;
+// }
 
 // Check call status via AT+CLCC
 // Returns: 0=no call, 1=active, 3=dialing, 4=alerting/ringing

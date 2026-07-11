@@ -899,7 +899,10 @@ static void setupWebServerRoutes() {
       body += "\"index\":" + String(i) + ",";
       body += "\"name\":\"" + escapeJson(String(di.name)) + "\",";
       body += "\"normally_closed\":" + String(di.normallyClosed ? "true" : "false") + ",";
+      bool diAck = false;
+      Shared_getAlarmAck(ALARM_SRC_DI, i, diAck);
       body += "\"in_alarm\":" + String(snapshot.digitalInputs[i] ? "true" : "false") + ",";
+      body += "\"acknowledged\":" + String(diAck ? "true" : "false") + ",";
       body += "\"enabled\":" + String(di.enabled ? "true" : "false");
       body += "}";
     }
@@ -916,9 +919,12 @@ static void setupWebServerRoutes() {
       body += "{";
       body += "\"index\":" + String(i) + ",";
       body += "\"name\":\"" + escapeJson(String(ai.name)) + "\",";
+      bool aiAck = false;
+      Shared_getAlarmAck(ALARM_SRC_AI, i, aiAck);
       body += "\"value\":" + String(snapshot.analogInputs[i], 2) + ",";
       body += "\"enabled\":" + String(ai.enabled ? "true" : "false") + ",";
-      body += "\"in_alarm\":" + String(aiAlarm ? "true" : "false");
+      body += "\"in_alarm\":" + String(aiAlarm ? "true" : "false") + ",";
+      body += "\"acknowledged\":" + String(aiAck ? "true" : "false");
       body += "}";
     }
     body += "],";
@@ -2394,6 +2400,9 @@ function loadDashboard(){
           var badge = di.in_alarm ? 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
           var type = di.normally_closed ? 'NC' : 'NO';
           var rowStyle = di.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
+          if (di.acknowledged && di.enabled) {
+            rowStyle = 'background:#fff4e5;';
+          }
           diHtml += '<tr style="' + rowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
         });
       }
@@ -2407,6 +2416,9 @@ function loadDashboard(){
           var inAlarm = !!ai.in_alarm;
           var aiStatusBadge = inAlarm ? '<span style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Alarm</span>' : '<span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Normal</span>';
           var aiRowStyle = ai.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
+          if (ai.acknowledged && ai.enabled) {
+            aiRowStyle = 'background:#fff4e5;';
+          }
           aiHtml += '<tr style="' + aiRowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + aiStatusBadge + '</td></tr>';
         });
       }

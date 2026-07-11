@@ -2188,26 +2188,16 @@ static const char *htmlPage() {
                     <input type="radio" name="hb_freq" value="0" style="width:16px;height:16px"> Once a Day
                   </label>
                   <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
-                    <input type="radio" name="hb_freq" value="1" style="width:16px;height:16px"> Twice a Day
+                    <input type="radio" name="hb_freq" value="1" style="width:16px;height:16px"> Twice a Week
                   </label>
                   <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
                     <input type="radio" name="hb_freq" value="2" style="width:16px;height:16px"> Once a Week
                   </label>
                 </div>
               </div>
-              <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Day(s)</label>
-                <div id="hb_days" style="display:flex;flex-wrap:wrap;gap:8px;font-size:14px"></div>
-              </div>
-              <div>
-                <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time-1</label>
-                <input type="time" id="hb_time1" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
-                <div id="hb_time2_wrap" style="margin-top:12px;display:none">
-                  <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Time-2</label>
-                  <input type="time" id="hb_time2" style="width:240px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box">
-                </div>
-              </div>
             </div>
+            <div style="font-size:13px;color:#555;margin-top:10px">Status messages are sent at fixed times only: Once a Day at 10:00 AM; Twice a Week at 10:00 AM on Monday and Thursday; Once a Week at 10:00 AM on Monday.</div>
+          </div>
           </div>
           <div id="hb_status" style="display:none;margin-top:12px;padding:12px;border-radius:4px"></div>
           <div style="display:flex;gap:10px;margin-top:12px">
@@ -2401,7 +2391,7 @@ function loadDashboard(){
           var type = di.normally_closed ? 'NC' : 'NO';
           var rowStyle = di.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
           if (di.enabled && di.acknowledged && di.in_alarm) {
-            rowStyle = 'background:#ffd9b8;';
+            rowStyle = 'background:#x;';
           }
           diHtml += '<tr style="' + rowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
         });
@@ -3453,27 +3443,11 @@ function getHbFreq() {
 }
 
 function updateHbFreqUI() {
-  var freq = getHbFreq();
-  var t2 = document.getElementById('hb_time2_wrap');
-  if (t2) t2.style.display = freq === 1 ? 'block' : 'none';
-  // For once_a_week: enforce single day selection
-  if (freq === 2) {
-    var cbs = document.querySelectorAll('.hb-day-cb');
-    var checkedCount = 0;
-    eachNode(cbs, function(cb) { if (cb.checked) checkedCount++; });
-    if (checkedCount > 1) {
-      // keep only first checked
-      var kept = false;
-      eachNode(cbs, function(cb) {
-        if (cb.checked) { if (kept) cb.checked = false; else kept = true; }
-      });
-    }
-  }
+  // No dynamic UI needed because days/times are fixed by frequency
 }
 
 function loadHeartbeatConfig() {
-  buildHbDays();
-  // Attach freq change listeners
+  // Attach freq change listeners (placeholder if later needed)
   eachNode(document.querySelectorAll('input[name="hb_freq"]'), function(r) {
     r.addEventListener('change', updateHbFreqUI);
   });
@@ -3487,18 +3461,7 @@ function loadHeartbeatConfig() {
       r.checked = (parseInt(r.value, 10) === (cfg.frequency || 0));
     });
 
-    // Set days checkboxes
-    eachNode(document.querySelectorAll('.hb-day-cb'), function(cb) {
-      var bit = parseInt(cb.value, 10);
-      cb.checked = !!((cfg.days_mask || 0) & (1 << bit));
-    });
-
-    // Set times
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    var t1 = document.getElementById('hb_time1');
-    if (t1) t1.value = pad(cfg.time1_h || 0) + ':' + pad(cfg.time1_m || 0);
-    var t2 = document.getElementById('hb_time2');
-    if (t2) t2.value = pad(cfg.time2_h || 0) + ':' + pad(cfg.time2_m || 0);
+    // No custom days/time fields for fixed schedule options
 
     updateHbFreqUI();
 
@@ -3511,25 +3474,29 @@ function saveHeartbeatConfig() {
   var enabled = document.getElementById('hb_enabled').checked;
   var freq = getHbFreq();
 
-  var daysMask = 0;
-  eachNode(document.querySelectorAll('.hb-day-cb:checked'), function(cb) {
-    daysMask |= (1 << parseInt(cb.value, 10));
-  });
-
   var contactsMask = getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED).getMask();
 
-  var t1 = (document.getElementById('hb_time1').value || '00:00').split(':');
-  var t2 = (document.getElementById('hb_time2').value || '00:00').split(':');
+  var daysMask = 0;
+  if (freq === 0) {
+    // Once a Day -> daily
+    daysMask = 1 << 0;
+  } else if (freq === 1) {
+    // Twice a Week -> Monday + Thursday
+    daysMask = (1 << 1) | (1 << 4);
+  } else if (freq === 2) {
+    // Once a Week -> Monday only
+    daysMask = (1 << 1);
+  }
 
   var p = new URLSearchParams();
   p.append('enabled', enabled ? '1' : '0');
   p.append('selected_contacts', contactsMask);
   p.append('frequency', freq);
   p.append('days_mask', daysMask);
-  p.append('time1_h', parseInt(t1[0], 10) || 0);
-  p.append('time1_m', parseInt(t1[1], 10) || 0);
-  p.append('time2_h', parseInt(t2[0], 10) || 0);
-  p.append('time2_m', parseInt(t2[1], 10) || 0);
+  p.append('time1_h', 10);
+  p.append('time1_m', 0);
+  p.append('time2_h', 10);
+  p.append('time2_m', 0);
 
   fetch('/api/heartbeat-config', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(function(r) { return r.json(); })

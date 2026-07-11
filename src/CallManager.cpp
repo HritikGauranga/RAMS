@@ -20,6 +20,7 @@ enum CallState : uint8_t {
   CS_IDLE,
   CS_DIALING,
   CS_WAITING_ANSWER,
+  CS_CALL_ANSWERED,   // non-blocking wait for voice path to open
   CS_PLAYING_TTS,
   CS_HANGING_UP,
   CS_INTER_CALL_DELAY,
@@ -34,27 +35,60 @@ static CallEntry  callQueue[CALL_QUEUE_SIZE] = {};
 static size_t     callQueueHead = 0;
 static size_t     callQueueTail = 0;
 
-static CallState  state          = CS_IDLE;
-static unsigned long stateEnteredMs = 0;
-static CallEntry  currentCall    = {};
-static uint16_t   ringTimeoutS   = 30;
-static uint16_t   interCallDelayS = 5;
+static CallState     state           = CS_IDLE;
+static unsigned long stateEnteredMs  = 0;
+static CallEntry     currentCall     = {};
+static uint16_t      ringTimeoutS    = 30;
+static uint16_t      interCallDelayS = 5;
+
+// URC accumulator — incoming serial bytes are drained here so DTMF URCs
+// are never lost when the Modem task issues AT commands on the same UART.
+static String urcBuf = "";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Serial helpers
 // ---------------------------------------------------------------------------
+
+// Drain all pending bytes from the UART into urcBuf.
+static void drainToUrcBuf() {
+  if (!gSerial) return;
+  while (gSerial->available()) {
+    char c = (char)gSerial->read();
+    urcBuf += c;
+    // Keep buffer bounded
+    if (urcBuf.length() > 512) urcBuf = urcBuf.substring(256);
+  }
+}
+
+// Check urcBuf for a DTMF URC and consume it.
+// EC200U URC format: +QTONEDET: <digit>\r\n
+static bool consumeDTMF() {
+  drainToUrcBuf();
+  int idx = urcBuf.indexOf("+QTONEDET:");
+  if (idx < 0) idx = urcBuf.indexOf("+DTMF:");
+  if (idx < 0) return false;
+  Serial.println("[CALL] DTMF URC: " + urcBuf.substring(idx, idx + 20));
+  // Remove everything up to and including this URC line
+  int nl = urcBuf.indexOf('\n', idx);
+  urcBuf = (nl >= 0) ? urcBuf.substring(nl + 1) : "";
+  return true;
+}
+
+// Send an AT command and return the response.
+// Drains pending bytes into urcBuf first so URCs are not lost.
 static String sendAT(const String &cmd, unsigned long timeout, bool silent = true) {
   if (!gSerial) return "";
-  while (gSerial->available()) gSerial->read();
+  drainToUrcBuf(); // preserve any pending URCs before flushing
   if (!silent) Serial.println("[CALL] >> " + cmd);
   gSerial->println(cmd);
   delay(80);
   String resp = "";
-  unsigned long start = millis();
+  unsigned long start   = millis();
   unsigned long lastByte = start;
   while (millis() - start < timeout) {
     while (gSerial->available()) {
-      resp += (char)gSerial->read();
+      char c = (char)gSerial->read();
+      resp += c;
       lastByte = millis();
       delay(2);
     }
@@ -63,8 +97,16 @@ static String sendAT(const String &cmd, unsigned long timeout, bool silent = tru
   }
   resp.trim();
   if (!silent) Serial.println("[CALL] << " + (resp.length() ? resp : "[NO RESPONSE]"));
+  // Any URC-like lines in the response also go into urcBuf for later inspection
+  if (resp.indexOf("+QTONEDET:") >= 0 || resp.indexOf("+DTMF:") >= 0) {
+    urcBuf += resp + "\n";
+  }
   return resp;
 }
+
+// ---------------------------------------------------------------------------
+// Queue helpers
+// ---------------------------------------------------------------------------
 
 static bool queueEmpty() { return callQueueHead == callQueueTail; }
 
@@ -79,28 +121,20 @@ static bool dequeue(CallEntry &out) {
 static void enqueueEntry(const CallEntry &e) {
   size_t next = (callQueueTail + 1) % CALL_QUEUE_SIZE;
   if (next == callQueueHead) {
-    // Queue full — drop oldest
-    callQueueHead = (callQueueHead + 1) % CALL_QUEUE_SIZE;
+    callQueueHead = (callQueueHead + 1) % CALL_QUEUE_SIZE; // drop oldest
   }
   callQueue[callQueueTail] = e;
   callQueueTail = next;
 }
 
 static void clearQueueForAlarm(AlarmSource src, size_t index) {
-  // Walk the ring buffer and invalidate matching entries
-  size_t i = callQueueHead;
-  while (i != callQueueTail) {
-    if (callQueue[i].valid && callQueue[i].src == src && callQueue[i].index == index) {
-      callQueue[i].valid = false;
-    }
-    i = (i + 1) % CALL_QUEUE_SIZE;
-  }
-  // Compact: rebuild without invalid entries
   CallEntry tmp[CALL_QUEUE_SIZE] = {};
   size_t count = 0;
-  i = callQueueHead;
+  size_t i = callQueueHead;
   while (i != callQueueTail) {
-    if (callQueue[i].valid) tmp[count++] = callQueue[i];
+    if (callQueue[i].valid && !(callQueue[i].src == src && callQueue[i].index == index)) {
+      tmp[count++] = callQueue[i];
+    }
     i = (i + 1) % CALL_QUEUE_SIZE;
   }
   callQueueHead = 0;
@@ -115,51 +149,67 @@ static void setState(CallState s) {
 
 static unsigned long elapsed() { return millis() - stateEnteredMs; }
 
-// Play TTS via AT+CTTS (EC200U supports text-to-speech during a call)
-static void playTTS(const char *text) {
-  String cmd = String("AT+CTTS=1,\"") + String(text) + "\"";
-  sendAT(cmd, 3000, false);
-}
+// ---------------------------------------------------------------------------
+// Modem call control
+// ---------------------------------------------------------------------------
 
-// Hang up
-static void hangUp() {
-  sendAT("ATH", 3000, false);
-}
-
-// Dial
 static void dial(const char *number) {
   String cmd = String("ATD") + String(number) + ";";
   sendAT(cmd, 5000, false);
 }
 
+static void hangUp() {
+  sendAT("ATH", 3000, false);
+}
+
+// EC200U TTS: AT+QTTS=<mode>,<text>
+//   mode 1 = play immediately during active call
+// Returns true if the modem accepted the command.
+static bool playTTS(const char *text) {
+  // Sanitise: strip double-quotes to avoid breaking the AT command string
+  String msg = String(text);
+  msg.replace("\"", "'");
+  if (msg.length() > 200) msg = msg.substring(0, 200);
+
+  // Step 1: Convert text to speech and save to UFS file.
+  // AT+QWTTS=<save_flag>,<channel>,<mode>,<text>
+  //   save_flag=1 (save to UFS:tts_out.wav)
+  //   channel=0
+  //   mode=0 (English)
+  String genCmd = String("AT+QWTTS=1,0,0,\"") + msg + "\"";
+  String genResp = sendAT(genCmd, 8000, false);
+  if (genResp.indexOf("OK") < 0) {
+    Serial.println("[CALL] AT+QWTTS failed: " + genResp);
+    return false;
+  }
+
+  // Step 2: Play the generated file through the voice call codec path.
+  // AT+QAUDPLAY routes audio through the active call's voice channel.
+  String playResp = sendAT("AT+QAUDPLAY=\"UFS:tts_out.wav\"", 5000, false);
+  bool ok = playResp.indexOf("OK") >= 0;
+  if (!ok) Serial.println("[CALL] AT+QAUDPLAY failed: " + playResp);
+  return ok;
+}
+
 // Check call status via AT+CLCC
-// Returns: 0=no call, 1=active, 2=held, 3=dialing, 4=alerting, 5=incoming
+// Returns: 0=no call, 1=active, 3=dialing, 4=alerting/ringing
 static int getCallStatus() {
   String resp = sendAT("AT+CLCC", 2000);
-  if (resp.indexOf("+CLCC:") < 0) return 0; // no active call
-  // +CLCC: <idx>,<dir>,<stat>,<mode>,<mpty>
-  int comma1 = resp.indexOf(',');
+  if (resp.indexOf("+CLCC:") < 0) return 0;
+  // +CLCC: <idx>,<dir>,<stat>,<mode>,<mpty>,...
+  // stat: 0=active, 1=held, 2=dialing, 3=alerting, 4=incoming, 5=waiting
+  int clccStart = resp.indexOf("+CLCC:");
+  int comma1 = resp.indexOf(',', clccStart);
   int comma2 = resp.indexOf(',', comma1 + 1);
   if (comma1 < 0 || comma2 < 0) return 0;
   String statStr = resp.substring(comma1 + 1, comma2);
   statStr.trim();
-  return statStr.toInt();
-}
-
-// Check for DTMF input via AT+QTONEDET or URC "+DTMF:"
-static bool checkDTMF() {
-  if (!gSerial) return false;
-  // Read any pending URCs
-  String buf = "";
-  while (gSerial->available()) {
-    buf += (char)gSerial->read();
-    delay(1);
-  }
-  if (buf.length() > 0) {
-    Serial.print("[CALL] URC: "); Serial.println(buf);
-    if (buf.indexOf("+DTMF:") >= 0 || buf.indexOf("+QTONEDET:") >= 0) return true;
-  }
-  return false;
+  int stat = statStr.toInt();
+  // Map EC200U stat to our convention: 0=active→1, 2=dialing→3, 3=alerting→4
+  if (stat == 0) return 1; // active
+  if (stat == 2) return 3; // dialing (MO)
+  if (stat == 3) return 4; // alerting (remote ringing)
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,8 +218,23 @@ static bool checkDTMF() {
 
 void CallManager_init(HardwareSerial &serial) {
   gSerial = &serial;
-  // Enable DTMF detection URC
-  sendAT("AT+QTONEDET=1", 2000, false);
+  urcBuf = "";
+
+  // Redirect all URCs to uart1 (the UART the ESP32 is connected to).
+  sendAT("AT+QURCCFG=\"urcport\",\"uart1\"", 2000, false);
+
+  // Keep DAI in its current mode (mode 3, I2S) — do NOT change it.
+  // Voice call audio goes through the baseband codec path, not DAI.
+  // AT+QAUDPLAY plays audio through the voice call codec path directly.
+
+  // Set call audio volume to maximum
+  sendAT("AT+CLVL=5", 1000, false);
+
+  // Configure QWTTS language: mode 0 = English
+  // (No separate QTTSETUP needed for QWTTS)
+
+  // NOTE: AT+QTONEDET must be sent during an active call, not at init.
+
   Serial.println("[CALL] CallManager initialized");
 }
 
@@ -203,40 +268,33 @@ void CallManager_enqueue(const NotificationEvent &ev) {
 
 void CallManager_ack(AlarmSource src, size_t index) {
   Shared_setAlarmAck(src, index, true);
-  // If current call is for this alarm, hang up and go idle
   if (state != CS_IDLE && currentCall.src == src && currentCall.index == index) {
     hangUp();
     setState(CS_IDLE);
-    Serial.printf("[CALL] ACK received — current call terminated (src=%d idx=%u)\n",
+    Serial.printf("[CALL] ACK — current call terminated (src=%d idx=%u)\n",
                   (int)src, (unsigned)index);
   }
   clearQueueForAlarm(src, index);
-  Serial.printf("[CALL] ACK — cleared call queue for src=%d idx=%u\n",
+  Serial.printf("[CALL] ACK — queue cleared for src=%d idx=%u\n",
                 (int)src, (unsigned)index);
 }
 
 bool CallManager_handleSmsAck(const String &sender, const String &body) {
-  // Format: ACK <input_name>  (case-insensitive)
   String upper = body;
   upper.toUpperCase();
   upper.trim();
   if (!upper.startsWith("ACK ") && upper != "ACK") return false;
 
-  String inputName = body.substring(4); // preserve original case for matching
+  String inputName = body.substring(4);
   inputName.trim();
 
-  // Search DI configs
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};
     if (!Shared_getDigitalInputConfig(i, cfg)) continue;
-    String cfgName = String(cfg.name);
-    if (cfgName.equalsIgnoreCase(inputName)) {
-      bool active = false;
-      // DI alarm is active if digitalInputs[i] != 0 (checked via snapshot)
+    if (String(cfg.name).equalsIgnoreCase(inputName)) {
       SystemSnapshot snap = Shared_getSnapshot();
-      active = (snap.digitalInputs[i] != 0);
-      if (active) {
-        Serial.printf("[CALL] SMS ACK for DI%u (%s) from %s\n",
+      if (snap.digitalInputs[i] != 0) {
+        Serial.printf("[CALL] SMS ACK DI%u (%s) from %s\n",
                       (unsigned)i + 1, cfg.name, sender.c_str());
         CallManager_ack(ALARM_SRC_DI, i);
         return true;
@@ -244,16 +302,14 @@ bool CallManager_handleSmsAck(const String &sender, const String &body) {
     }
   }
 
-  // Search AI configs
   for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
     AnalogInputConfig cfg = {};
     if (!Shared_getAnalogInputConfig(i, cfg)) continue;
-    String cfgName = String(cfg.name);
-    if (cfgName.equalsIgnoreCase(inputName)) {
+    if (String(cfg.name).equalsIgnoreCase(inputName)) {
       bool active = false;
       Shared_getAIAlarmState(i, active);
       if (active) {
-        Serial.printf("[CALL] SMS ACK for AI%u (%s) from %s\n",
+        Serial.printf("[CALL] SMS ACK AI%u (%s) from %s\n",
                       (unsigned)i + 1, cfg.name, sender.c_str());
         CallManager_ack(ALARM_SRC_AI, i);
         return true;
@@ -262,31 +318,35 @@ bool CallManager_handleSmsAck(const String &sender, const String &body) {
   }
 
   Serial.printf("[CALL] SMS ACK '%s' — no matching active alarm\n", inputName.c_str());
-  return true; // consumed the ACK command even if no match
+  return true;
 }
 
+// ---------------------------------------------------------------------------
+// State machine tick — called every ~25 ms from Modem task
+// ---------------------------------------------------------------------------
 void CallManager_tick() {
+  // Always drain UART into urcBuf so URCs are never lost between ticks
+  drainToUrcBuf();
+
   switch (state) {
 
     case CS_IDLE: {
       if (queueEmpty()) return;
-      // Peek next entry — skip if already ACKed
-      CallEntry next = {};
+      // Skip ACKed entries
       while (!queueEmpty()) {
-        next = callQueue[callQueueHead];
         bool acked = false;
-        Shared_getAlarmAck(next.src, next.index, acked);
+        Shared_getAlarmAck(callQueue[callQueueHead].src,
+                           callQueue[callQueueHead].index, acked);
         if (!acked) break;
-        // Skip this entry
         callQueueHead = (callQueueHead + 1) % CALL_QUEUE_SIZE;
-        Serial.println("[CALL] Skipping call — alarm already ACKed");
+        Serial.println("[CALL] Skipping — alarm already ACKed");
       }
       if (queueEmpty()) return;
       if (!dequeue(currentCall)) return;
 
       bool acked = false;
       Shared_getAlarmAck(currentCall.src, currentCall.index, acked);
-      if (acked) { setState(CS_IDLE); return; }
+      if (acked) return;
 
       Serial.printf("[CALL] Dialing %s\n", currentCall.number);
       dial(currentCall.number);
@@ -295,39 +355,18 @@ void CallManager_tick() {
     }
 
     case CS_DIALING: {
-      // Give modem 2s to register the dial command, then move to waiting
-      if (elapsed() >= 2000) setState(CS_WAITING_ANSWER);
+      // Wait 3 s for the modem to register the outgoing call before polling CLCC
+      if (elapsed() >= 3000) setState(CS_WAITING_ANSWER);
       break;
     }
 
     case CS_WAITING_ANSWER: {
-      // Check for DTMF ACK first (shouldn't happen before answer, but be safe)
-      if (checkDTMF()) {
-        Serial.println("[CALL] DTMF during wait — ACK");
-        CallManager_ack(currentCall.src, currentCall.index);
-        hangUp();
-        setState(CS_IDLE);
-        return;
-      }
-
       int cs = getCallStatus();
-      if (cs == 0) {
-        // Call dropped / not answered
-        if (elapsed() >= (unsigned long)ringTimeoutS * 1000UL) {
-          Serial.printf("[CALL] No answer from %s — moving to next\n", currentCall.number);
-          hangUp();
-          setState(CS_INTER_CALL_DELAY);
-        }
-        return;
-      }
       if (cs == 1) {
-        // Active (answered)
-        Serial.printf("[CALL] Answered by %s — playing TTS\n", currentCall.number);
-        playTTS(currentCall.message);
-        setState(CS_PLAYING_TTS);
+        Serial.printf("[CALL] Answered by %s — waiting for voice path\n", currentCall.number);
+        setState(CS_CALL_ANSWERED);
         return;
       }
-      // cs == 3 (dialing) or 4 (alerting) — still ringing
       if (elapsed() >= (unsigned long)ringTimeoutS * 1000UL) {
         Serial.printf("[CALL] Ring timeout for %s\n", currentCall.number);
         hangUp();
@@ -336,26 +375,50 @@ void CallManager_tick() {
       break;
     }
 
+    case CS_CALL_ANSWERED: {
+      // Wait 3s non-blocking for the voice bearer to fully open.
+      // AT+QAUDPLAY returns 903 if attempted before the voice path is ready.
+      if (elapsed() < 3000) {
+        // Check if remote hung up during the wait
+        if (getCallStatus() == 0) {
+          Serial.println("[CALL] Remote hung up before TTS");
+          setState(CS_INTER_CALL_DELAY);
+        }
+        return;
+      }
+
+      // Enable DTMF detection now that call is active and settled
+      sendAT("AT+QTONEDET=1,0", 1000, false);
+
+      Serial.printf("[CALL] Voice path ready — playing TTS\n");
+      playTTS(currentCall.message);
+      setState(CS_PLAYING_TTS);
+      break;
+    }
+
     case CS_PLAYING_TTS: {
-      // Check for DTMF ACK
-      if (checkDTMF()) {
-        Serial.println("[CALL] DTMF ACK received during TTS");
+      // Check for DTMF ACK — any keypress during playback
+      if (consumeDTMF()) {
+        Serial.println("[CALL] DTMF ACK during TTS");
+        sendAT("AT+QAUDSTOP", 1000, false); // stop playback
         CallManager_ack(currentCall.src, currentCall.index);
         hangUp();
         setState(CS_IDLE);
         return;
       }
-      // Check if call dropped
+
+      // Check if remote hung up
       int cs = getCallStatus();
       if (cs == 0) {
-        // Remote hung up
         Serial.println("[CALL] Remote hung up during TTS");
         setState(CS_INTER_CALL_DELAY);
         return;
       }
-      // Allow ~10s for TTS playback then hang up
-      if (elapsed() >= 12000) {
-        Serial.println("[CALL] TTS timeout — hanging up");
+
+      // 30s window: covers QWTTS generation (~5s) + playback of long messages
+      if (elapsed() >= 30000) {
+        Serial.println("[CALL] TTS playback window elapsed — hanging up");
+        sendAT("AT+QAUDSTOP", 1000, false);
         hangUp();
         setState(CS_INTER_CALL_DELAY);
       }

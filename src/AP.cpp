@@ -2400,8 +2400,8 @@ function loadDashboard(){
           var badge = di.in_alarm ? 'style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"' : 'style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600"';
           var type = di.normally_closed ? 'NC' : 'NO';
           var rowStyle = di.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
-          if (di.acknowledged && di.enabled) {
-            rowStyle = 'background:#fff4e5;';
+          if (di.enabled && di.acknowledged && di.in_alarm) {
+            rowStyle = 'background:#ffd9b8;';
           }
           diHtml += '<tr style="' + rowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
         });
@@ -2416,8 +2416,8 @@ function loadDashboard(){
           var inAlarm = !!ai.in_alarm;
           var aiStatusBadge = inAlarm ? '<span style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Alarm</span>' : '<span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600">Normal</span>';
           var aiRowStyle = ai.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
-          if (ai.acknowledged && ai.enabled) {
-            aiRowStyle = 'background:#fff4e5;';
+          if (ai.enabled && ai.acknowledged && inAlarm) {
+            aiRowStyle = 'background:#ffd9b8;';
           }
           aiHtml += '<tr style="' + aiRowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>AI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(ai.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + (isNaN(aiValue) ? '-' : aiValue.toFixed(2)) + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + aiStatusBadge + '</td></tr>';
         });

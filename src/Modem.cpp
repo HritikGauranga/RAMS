@@ -305,17 +305,13 @@ static String buildInputStatusSMS() {
 
     if (!nameDefined)
         name = "--";
-
     msg += "AI" + String(i + 1) + "(" + name + "): ";
-
     if (!nameDefined) {
         msg += "Not Defined\n";
     } else {
         msg += String(snap.analogInputs[i], 2);
-
         if (cfg.enabled && cfg.engineering_unit[0] != '\0')
             msg += " " + String(cfg.engineering_unit);
-
         msg += ", " + String(inAlarm ? "Alarm" : "Normal") + "\n";
     }
 }
@@ -484,6 +480,308 @@ static String buildIpStatusSMS() {
 //   }
 // }
 
+static bool splitCommandLine(const String &line, String parts[], size_t maxParts, size_t &outCount) {
+  outCount = 0;
+  String trimmed = line;
+  trimmed.trim();
+  int len = trimmed.length();
+  int start = 0;
+  while (start < len && outCount < maxParts) {
+    int pos = trimmed.indexOf('%', start);
+    if (pos < 0) {
+      parts[outCount++] = trimmed.substring(start);
+      return true;
+    }
+    parts[outCount++] = trimmed.substring(start, pos);
+    start = pos + 1;
+  }
+  return true;
+}
+
+static bool parseInputIdentifier(const String &token, bool &isAnalog, size_t &index) {
+  String upper = token;
+  upper.toUpperCase();
+  if (upper.startsWith("DI")) {
+    String num = upper.substring(2);
+    if (num.length() == 0) return false;
+    index = (size_t)num.toInt();
+    if (index == 0 || index > DIGITAL_INPUT_COUNT) return false;
+    isAnalog = false;
+    index -= 1;
+    return true;
+  }
+  if (upper.startsWith("AI")) {
+    String num = upper.substring(2);
+    if (num.length() == 0) return false;
+    index = (size_t)num.toInt();
+    if (index == 0 || index > ANALOG_INPUT_COUNT) return false;
+    isAnalog = true;
+    index -= 1;
+    return true;
+  }
+  return false;
+}
+
+static String inputIdentifierToString(bool isAnalog, size_t index) {
+  return String(isAnalog ? "AI" : "DI") + String((unsigned)(index + 1));
+}
+
+static size_t countBitmaskOnes(uint32_t mask) {
+  size_t count = 0;
+  while (mask) {
+    count += (mask & 1);
+    mask >>= 1;
+  }
+  return count;
+}
+
+static bool findContactIndexByNumber(const String &number, size_t &outIndex) {
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return false;
+  String trimmed = number;
+  trimmed.trim();
+  for (size_t i = 0; i < rec.count; ++i) {
+    if (trimmed == String(rec.items[i].number)) {
+      outIndex = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool updateContactNotificationFlags(size_t contactIndex, bool enableVoice, bool enableSms) {
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) return false;
+  if (contactIndex >= rec.count) return false;
+  if (enableVoice) rec.items[contactIndex].call_enabled = true;
+  if (enableSms)   rec.items[contactIndex].sms_enabled  = true;
+  return Shared_saveRecipientContacts(rec);
+}
+
+static bool validatePin(const String &pin) {
+  SIMConfig simCfg = {};
+  Shared_getSIMConfig(simCfg);
+  String storedPin = String(simCfg.relay_pin);
+  storedPin.trim();
+  return storedPin.length() > 0 && pin == storedPin;
+}
+
+static String buildListResponse(bool isAnalog, size_t index) {
+  String header = inputIdentifierToString(isAnalog, index);
+  String out;
+
+  if (isAnalog) {
+    AnalogInputConfig cfg = {};
+    if (!Shared_getAnalogInputConfig(index, cfg)) return "ERROR: Unable to read input config";
+    size_t assigned = countBitmaskOnes(cfg.selected_contacts);
+    out = header + " Contacts " + String((unsigned)assigned) + "/5\n\n";
+    if (assigned == 0) {
+      out += "No contacts assigned";
+      return out;
+    }
+    ContactList rec = {};
+    if (!Shared_getRecipientContacts(rec)) {
+      out += "No contacts assigned";
+      return out;
+    }
+    size_t lineNo = 0;
+    for (size_t i = 0; i < rec.count && lineNo < 5; ++i) {
+      if (!(cfg.selected_contacts & (1UL << i))) continue;
+      ++lineNo;
+      out += String(lineNo) + ". " + String(rec.items[i].name) + "\n";
+      out += "   " + String(rec.items[i].number) + "\n";
+      out += "   Voice: " + String(rec.items[i].call_enabled ? "Yes" : "No") + "\n";
+      out += "   SMS: " + String(rec.items[i].sms_enabled ? "Yes" : "No");
+      if (lineNo < assigned) out += "\n\n";
+    }
+    return out;
+  }
+
+  DigitalInputConfig cfg = {};
+  if (!Shared_getDigitalInputConfig(index, cfg)) return "ERROR: Unable to read input config";
+  size_t assigned = countBitmaskOnes(cfg.selected_contacts);
+  out = header + " Contacts " + String((unsigned)assigned) + "/5\n\n";
+  if (assigned == 0) {
+    out += "No contacts assigned";
+    return out;
+  }
+  ContactList rec = {};
+  if (!Shared_getRecipientContacts(rec)) {
+    out += "No contacts assigned";
+    return out;
+  }
+  size_t lineNo = 0;
+  for (size_t i = 0; i < rec.count && lineNo < 5; ++i) {
+    if (!(cfg.selected_contacts & (1UL << i))) continue;
+    ++lineNo;
+    out += String(lineNo) + ". " + String(rec.items[i].name) + "\n";
+    out += "   " + String(rec.items[i].number) + "\n";
+    out += "   Voice: " + String(rec.items[i].call_enabled ? "Yes" : "No") + "\n";
+    out += "   SMS: " + String(rec.items[i].sms_enabled ? "Yes" : "No");
+    if (lineNo < assigned) out += "\n\n";
+  }
+  return out;
+}
+
+static bool processContactAssignmentCommand(const String &sender, const String &body) {
+  String line = body;
+  int nl = line.indexOf('\n');
+  if (nl >= 0) line = line.substring(0, nl);
+  line.trim();
+  if (line.length() == 0) return false;
+
+  const size_t MAX_PARTS = 8;
+  String parts[MAX_PARTS] = {};
+  size_t partCount = 0;
+  splitCommandLine(line, parts, MAX_PARTS, partCount);
+  if (partCount == 0) return false;
+
+  String cmd = parts[0];
+  cmd.toUpperCase();
+
+  if (cmd == "LST") {
+    if (partCount != 2) {
+      sendSMS(sender, "ERROR: Invalid command format");
+      return true;
+    }
+    bool isAnalog;
+    size_t inputIndex;
+    if (!parseInputIdentifier(parts[1], isAnalog, inputIndex)) {
+      sendSMS(sender, "ERROR: Invalid input identifier");
+      return true;
+    }
+    String response = buildListResponse(isAnalog, inputIndex);
+    sendSMS(sender, response);
+    return true;
+  }
+
+  if (cmd == "DEL") {
+    if (partCount != 4) return false; // not a DEL command for us
+    String pin = parts[1];
+    String number = parts[2];
+    String inputToken = parts[3];
+    pin.trim(); number.trim(); inputToken.trim();
+    if (!validatePin(pin)) {
+      sendSMS(sender, "ERROR: Invalid PIN");
+      return true;
+    }
+    bool isAnalog;
+    size_t inputIndex;
+    if (!parseInputIdentifier(inputToken, isAnalog, inputIndex)) {
+      sendSMS(sender, "ERROR: Invalid input identifier");
+      return true;
+    }
+    size_t contactIndex;
+    if (!findContactIndexByNumber(number, contactIndex)) {
+      return true; // silently ignore unknown contacts
+    }
+    if (isAnalog) {
+      AnalogInputConfig cfg = {};
+      if (!Shared_getAnalogInputConfig(inputIndex, cfg)) return true;
+      if (cfg.selected_contacts & (1UL << contactIndex)) {
+        cfg.selected_contacts &= ~(1UL << contactIndex);
+        Shared_saveAnalogInputConfig(inputIndex, cfg);
+      }
+    } else {
+      DigitalInputConfig cfg = {};
+      if (!Shared_getDigitalInputConfig(inputIndex, cfg)) return true;
+      if (cfg.selected_contacts & (1UL << contactIndex)) {
+        cfg.selected_contacts &= ~(1UL << contactIndex);
+        Shared_saveDigitalInputConfig(inputIndex, cfg);
+      }
+    }
+    return true;
+  }
+
+  if (cmd == "ADD") {
+    if (partCount < 5) {
+      sendSMS(sender, "ERROR: Invalid command format");
+      return true;
+    }
+    String pin = parts[1];
+    String number = parts[2];
+    String inputToken = parts[3];
+    pin.trim(); number.trim(); inputToken.trim();
+    bool voiceFlag = false;
+    bool smsFlag = false;
+    for (size_t i = 4; i < partCount; ++i) {
+      String flag = parts[i];
+      flag.trim();
+      flag.toUpperCase();
+      for (size_t j = 0; j < flag.length(); ++j) {
+        char c = flag.charAt(j);
+        if (c == 'V') voiceFlag = true;
+        else if (c == 'S') smsFlag = true;
+      }
+    }
+    if (!voiceFlag && !smsFlag) {
+      sendSMS(sender, "ERROR: Invalid command format");
+      return true;
+    }
+    if (!validatePin(pin)) {
+      sendSMS(sender, "ERROR: Invalid PIN");
+      return true;
+    }
+    size_t contactIndex;
+    if (!findContactIndexByNumber(number, contactIndex)) {
+      sendSMS(sender, "ERROR: Contact does not exist in Contact List");
+      return true;
+    }
+    bool isAnalog;
+    size_t inputIndex;
+    if (!parseInputIdentifier(inputToken, isAnalog, inputIndex)) {
+      sendSMS(sender, "ERROR: Invalid input identifier");
+      return true;
+    }
+    if (isAnalog) {
+      AnalogInputConfig cfg = {};
+      if (!Shared_getAnalogInputConfig(inputIndex, cfg)) {
+        sendSMS(sender, "ERROR: Unable to read input config");
+        return true;
+      }
+      bool alreadyAssigned = (cfg.selected_contacts & (1UL << contactIndex)) != 0;
+      size_t assignedCount = countBitmaskOnes(cfg.selected_contacts);
+      if (!alreadyAssigned && assignedCount >= 5) {
+        sendSMS(sender, "ERROR: Maximum contacts reached");
+        return true;
+      }
+      cfg.selected_contacts |= (1UL << contactIndex);
+      if (!Shared_saveAnalogInputConfig(inputIndex, cfg)) {
+        sendSMS(sender, "ERROR: Save failed");
+        return true;
+      }
+      if (!updateContactNotificationFlags(contactIndex, voiceFlag, smsFlag)) {
+        sendSMS(sender, "ERROR: Save failed");
+        return true;
+      }
+      return true;
+    }
+    DigitalInputConfig cfg = {};
+    if (!Shared_getDigitalInputConfig(inputIndex, cfg)) {
+      sendSMS(sender, "ERROR: Unable to read input config");
+      return true;
+    }
+    bool alreadyAssigned = (cfg.selected_contacts & (1UL << contactIndex)) != 0;
+    size_t assignedCount = countBitmaskOnes(cfg.selected_contacts);
+    if (!alreadyAssigned && assignedCount >= 5) {
+      sendSMS(sender, "ERROR: Maximum contacts reached");
+      return true;
+    }
+    cfg.selected_contacts |= (1UL << contactIndex);
+    if (!Shared_saveDigitalInputConfig(inputIndex, cfg)) {
+      sendSMS(sender, "ERROR: Save failed");
+      return true;
+    }
+    if (!updateContactNotificationFlags(contactIndex, voiceFlag, smsFlag)) {
+      sendSMS(sender, "ERROR: Save failed");
+      return true;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 static void processRelayCommand(const String &sender, const String &body) {
   String content = body;
   int firstPercent = content.indexOf('%');
@@ -613,7 +911,9 @@ static void checkAndProcessSMS() {
       if (currentIndex >= 0) {
         String upperBody = body;
         upperBody.toUpperCase();
-        if (upperBody.indexOf("GET STATUS") >= 0) {
+        if (processContactAssignmentCommand(sender, body)) {
+          // handled by new contact management commands
+        } else if (upperBody.indexOf("GET STATUS") >= 0) {
           processStatusRequest(sender);
         // } else if (upperBody.indexOf("GET IP%") >= 0) {
         //   processIpRequest(sender, body);
@@ -649,7 +949,9 @@ static void checkAndProcessSMS() {
   if (currentIndex >= 0) {
     String upperBody = body;
     upperBody.toUpperCase();
-    if (upperBody.indexOf("GET STATUS") >= 0) {
+    if (processContactAssignmentCommand(sender, body)) {
+      // handled by new contact management commands
+    } else if (upperBody.indexOf("GET STATUS") >= 0) {
       processStatusRequest(sender);
     // } else if (upperBody.indexOf("GET IP%") >= 0) {
     //   processIpRequest(sender, body);

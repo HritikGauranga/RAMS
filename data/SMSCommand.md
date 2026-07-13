@@ -72,6 +72,104 @@ Command                            | seconds | Result
 
 ---
 
+## Contact Assignment Commands
+
+These commands manage per-input notification assignments for DI and AI inputs.
+Only contacts already saved in the Web UI Contact Config page may be assigned.
+
+### ADD Contact Assignment
+Adds or updates an existing contact assignment for a specific DI/AI input.
+
+#### Format
+```
+ADD%<PIN>%<PHONE_NUMBER>%<INPUT_NO>%<OPTIONS>
+```
+
+#### Parameters
+- `PIN` — System PIN from Network Configuration / SIM Configuration
+- `PHONE_NUMBER` — Exact saved contact phone number from Contact Config
+- `INPUT_NO` — `DI1`..`DI4` or `AI1`..`AI2`
+- `OPTIONS` — notification flags, any order: `V` = Voice, `S` = SMS
+
+#### Rules
+- `V` and/or `S` are required. If neither is provided, the command is rejected.
+- Phone number comparison is exact; `+919876543210` and `9876543210` are different.
+- Existing contact must already be present in the Contact List.
+- If the contact is already assigned to the input, the existing assignment is updated instead of duplicated.
+- Maximum 5 contacts per input. If full, the command returns `ERROR: Maximum contacts reached`.
+- Changes persist to storage and appear in the Web UI after refresh.
+
+#### Examples
+```
+ADD%1234%+918192738217%DI1%V%S
+```
+Enable both Voice and SMS for contact +918192738217 on DI1.
+
+```
+ADD%1234%+918192738217%AI1%S
+```
+Enable SMS only for contact +918192738217 on AI1.
+
+#### Error responses
+- `ERROR: Invalid PIN`
+- `ERROR: Contact does not exist in Contact List`
+- `ERROR: Maximum contacts reached`
+
+### DEL Contact Assignment
+Removes a contact assignment from a specific input.
+
+#### Format
+```
+DEL%<PIN>%<PHONE_NUMBER>%<INPUT_NO>
+```
+
+#### Behavior
+- Validates PIN.
+- If the assignment exists, it is removed and the change is saved.
+- If no assignment exists for the contact/input, the command is ignored silently.
+
+#### Example
+```
+DEL%1234%+918192738217%DI1
+```
+
+### LST Contact Assignment
+Lists assigned contacts for a single input.
+
+#### Format
+```
+LST%<INPUT_NO>
+```
+
+#### Behavior
+- Returns only currently assigned contacts for the requested input.
+- Includes contact name, phone number, Voice status, and SMS status.
+- Shows count of assigned contacts and the maximum of 5.
+
+#### Example response
+```
+DI1 Contacts 2/5
+
+1. Rahul
+   +918192738217
+   Voice: Yes
+   SMS: Yes
+
+2. Amit
+   +919999999999
+   Voice: No
+   SMS: Yes
+```
+
+#### Empty assignment response
+```
+DI1 Contacts 0/5
+
+No contacts assigned
+```
+
+---
+
 ## Automatic SMS Alerts (sent by device, not triggered by user)
 
 These are sent automatically when alarm conditions are met — no user command needed.

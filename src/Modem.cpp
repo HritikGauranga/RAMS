@@ -285,21 +285,40 @@ static String buildInputStatusSMS() {
     Shared_getDigitalInputConfig(i, cfg);
     bool inAlarm = snap.digitalInputs[i] != 0;
     String name = String(cfg.name);
-    if (name.length() == 0) name = "DI" + String(i + 1);
-    msg += name + ": " + (inAlarm ? "Alarm" : "Normal") + "\n";
-  }
+    bool nameDefined = name.length() > 0;
+    if (!nameDefined)
+        name = "--";
+    msg += "DI" + String(i + 1) + "(" + name + "): "
+        + String(nameDefined ? (inAlarm ? "Alarm" : "Normal") : "Not Defined")
+        + "\n";
+}
   msg += "[Analog Inputs]\n";
   for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
     AnalogInputConfig cfg = {};
     Shared_getAnalogInputConfig(i, cfg);
+
     bool inAlarm = false;
     Shared_getAIAlarmState(i, inAlarm);
+
     String name = String(cfg.name);
-    if (name.length() == 0) name = "AI" + String(i + 1);
-    msg += name + ": " + String(snap.analogInputs[i], 2);
-    if (cfg.enabled && cfg.engineering_unit[0] != '\0') msg += " " + String(cfg.engineering_unit);
-    msg += ", " + String(inAlarm ? "Alarm" : "Normal") + "\n";
-  }
+    bool nameDefined = name.length() > 0;
+
+    if (!nameDefined)
+        name = "--";
+
+    msg += "AI" + String(i + 1) + "(" + name + "): ";
+
+    if (!nameDefined) {
+        msg += "Not Defined\n";
+    } else {
+        msg += String(snap.analogInputs[i], 2);
+
+        if (cfg.enabled && cfg.engineering_unit[0] != '\0')
+            msg += " " + String(cfg.engineering_unit);
+
+        msg += ", " + String(inAlarm ? "Alarm" : "Normal") + "\n";
+    }
+}
   return msg;
 }
 
@@ -311,12 +330,19 @@ static String buildRelayStatusSMS() {
     RelayConfig cfg = {};
     Shared_getRelayConfig(i, cfg);
     String name = String(cfg.name);
-    if (name.length() == 0) name = "DO" + String(i + 1);
+    bool nameDefined = name.length() > 0;
+    if (!nameDefined)
+    name = "--";
     RelayTriggerSource src = Shared_getRelayTriggerSource(i);
     String prefix = "";
     if (src == RELAY_SOURCE_SMS) prefix = "S-";
     else if (src == RELAY_SOURCE_ALARM) prefix = "A-";
-    msg += prefix + "DO" + String(i + 1) + "(" + name + "): " + (snap.relayState[i] ? "ON" : "OFF");
+    if (!nameDefined) {
+      msg += prefix + "DO" + String(i + 1) + "(" + name + "): Not Defined";
+    } else {
+      msg += prefix + "DO" + String(i + 1) + "(" + name + "): "
+         + String(snap.relayState[i] ? "ON" : "OFF");
+    }
     if (i + 1 < RELAY_OUTPUT_COUNT) msg += "\n";
   }
   return msg;

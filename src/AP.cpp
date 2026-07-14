@@ -1364,10 +1364,12 @@ static void setupWebServerRoutes() {
     if (!isAuthenticated(request)) { request->send(401, "application/json", "{\"error\":\"Unauthorized\"}"); return; }
     VoiceCallSettings vcs = {};
     vcs.enabled = request->hasParam("enabled", true) && request->getParam("enabled", true)->value() == "1";
-    vcs.ring_timeout_s = request->hasParam("ring_timeout_s", true) ? (uint16_t)request->getParam("ring_timeout_s", true)->value().toInt() : 30;
-    vcs.inter_call_delay_s = request->hasParam("inter_call_delay_s", true) ? (uint16_t)request->getParam("inter_call_delay_s", true)->value().toInt() : 5;
-    if (vcs.ring_timeout_s == 0) vcs.ring_timeout_s = 30;
-    if (vcs.inter_call_delay_s == 0) vcs.inter_call_delay_s = 5;
+    int ringTimeout = request->hasParam("ring_timeout_s", true) ? request->getParam("ring_timeout_s", true)->value().toInt() : 30;
+    int interDelay = request->hasParam("inter_call_delay_s", true) ? request->getParam("inter_call_delay_s", true)->value().toInt() : 5;
+    ringTimeout = constrain(ringTimeout, 10, 999);
+    interDelay = constrain(interDelay, 1, 99);
+    vcs.ring_timeout_s = (uint16_t)ringTimeout;
+    vcs.inter_call_delay_s = (uint16_t)interDelay;
     if (!Shared_saveVoiceCallSettings(vcs)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
     request->send(200, "application/json", "{\"success\":true}");
   });
@@ -2061,12 +2063,12 @@ static const char *htmlPage() {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Ring Timeout (seconds)</label>
-                <input type="number" id="vc_ring_timeout" min="10" max="120" value="30" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <input type="number" id="vc_ring_timeout" min="10" max="999" step="1" value="30" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,3)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
                 <div style="font-size:11px;color:#999;margin-top:4px">Seconds to wait for answer before moving to next contact</div>
               </div>
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Delay Between Calls (seconds)</label>
-                <input type="number" id="vc_inter_delay" min="1" max="60" value="5" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <input type="number" id="vc_inter_delay" min="1" max="99" step="1" value="5" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,2)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
                 <div style="font-size:11px;color:#999;margin-top:4px">Pause between consecutive calls</div>
               </div>
             </div>
@@ -3255,9 +3257,19 @@ function loadVoiceCallConfig(){
 
 function saveVoiceCallConfig(){
   var p = new URLSearchParams();
+  var rtEl = document.getElementById('vc_ring_timeout');
+  var delayEl = document.getElementById('vc_inter_delay');
+  var rtVal = parseInt(rtEl ? rtEl.value : '30', 10);
+  var delayVal = parseInt(delayEl ? delayEl.value : '5', 10);
+  if (isNaN(rtVal)) rtVal = 30;
+  if (isNaN(delayVal)) delayVal = 5;
+  rtVal = Math.max(10, Math.min(999, rtVal));
+  delayVal = Math.max(1, Math.min(99, delayVal));
+  if (rtEl) rtEl.value = rtVal;
+  if (delayEl) delayEl.value = delayVal;
   p.append('enabled', document.getElementById('vc_enabled').checked ? '1' : '0');
-  p.append('ring_timeout_s', document.getElementById('vc_ring_timeout').value || '30');
-  p.append('inter_call_delay_s', document.getElementById('vc_inter_delay').value || '5');
+  p.append('ring_timeout_s', rtVal);
+  p.append('inter_call_delay_s', delayVal);
   fetch('/api/voicecall-config', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString() })
     .then(r=>r.json()).then(function(d){
       if(d.success) showSmallStatus('vc_status','Voice call settings saved',true);

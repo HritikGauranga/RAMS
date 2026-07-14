@@ -787,7 +787,16 @@ static void setupWebServerRoutes() {
         int colon = obj.indexOf(':', nameIdx);
         int q1 = obj.indexOf('"', colon + 1);
         int q2 = obj.indexOf('"', q1 + 1);
-        if (q1 >= 0 && q2 >= 0) { String n = obj.substring(q1 + 1, q2); n.trim(); n.toCharArray(c.name, sizeof(c.name)); }
+        if (q1 >= 0 && q2 >= 0) {
+          String n = obj.substring(q1 + 1, q2);
+          n.trim();
+          if (n.length() > 16) {
+            String err = String("{\"error\":\"Contact name too long at contact ") + String(totalFound) + "\"}";
+            request->send(400, "application/json", err);
+            return;
+          }
+          n.toCharArray(c.name, sizeof(c.name));
+        }
       }
       int numIdx = obj.indexOf("\"number\"");
       if (numIdx < 0) {
@@ -3203,8 +3212,9 @@ function makeContactRow(item) {
   var row = document.createElement('tr'); row.className = 'contact-row';
   // Name
   var tdName = document.createElement('td'); tdName.style.padding='6px 8px';
-  var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||'';
+  var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||''; name.maxLength=16;
   name.style.cssText='padding:5px 7px;font-size:12px;width:140px;border:1px solid #ccc;border-radius:4px';
+  name.oninput = function(){ this.value = this.value.slice(0, 16); };
   tdName.appendChild(name); row.appendChild(tdName);
   // Number
   var tdNum = document.createElement('td'); tdNum.style.padding='6px 8px';

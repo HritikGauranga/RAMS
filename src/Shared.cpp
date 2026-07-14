@@ -44,9 +44,9 @@ static bool saveIOConfigToFile();
 
 static GatewaySettings gatewaySettings = {
   true,            // useDhcp
-  {192,168,8,200}, // staticIp
-  {255,255,255,0}, // subnet
-  {192,168,8,1},   // gateway
+  {0,0,0,0},       // staticIp (user must configure via AP mode)
+  {0,0,0,0},       // subnet (user must configure via AP mode)
+  {0,0,0,0},       // gateway (user must configure via AP mode)
   80               // httpPort default
 };
 

@@ -553,10 +553,14 @@ static bool updateContactNotificationFlags(size_t contactIndex, bool enableVoice
   ContactList rec = {};
   if (!Shared_getRecipientContacts(rec)) return false;
   if (contactIndex >= rec.count) return false;
-  if (enableVoice) rec.items[contactIndex].call_enabled = true;
-  if (enableSms)   rec.items[contactIndex].sms_enabled  = true;
+
+  // Explicitly apply BOTH flags so that missing %V/%S clears previous settings.
+  rec.items[contactIndex].call_enabled = enableVoice;
+  rec.items[contactIndex].sms_enabled  = enableSms;
+
   return Shared_saveRecipientContacts(rec);
 }
+
 
 static bool validatePin(const String &pin) {
   SIMConfig simCfg = {};

@@ -1366,8 +1366,10 @@ static void setupWebServerRoutes() {
     vcs.enabled = request->hasParam("enabled", true) && request->getParam("enabled", true)->value() == "1";
     int ringTimeout = request->hasParam("ring_timeout_s", true) ? request->getParam("ring_timeout_s", true)->value().toInt() : 30;
     int interDelay = request->hasParam("inter_call_delay_s", true) ? request->getParam("inter_call_delay_s", true)->value().toInt() : 5;
-    ringTimeout = constrain(ringTimeout, 10, 999);
-    interDelay = constrain(interDelay, 1, 99);
+    // Immediate clamp even if UI sends out-of-range values.
+    ringTimeout = constrain(ringTimeout, 10, 45);
+    interDelay = constrain(interDelay, 1, 60);
+
     vcs.ring_timeout_s = (uint16_t)ringTimeout;
     vcs.inter_call_delay_s = (uint16_t)interDelay;
     if (!Shared_saveVoiceCallSettings(vcs)) { request->send(500, "application/json", "{\"error\":\"Save failed\"}"); return; }
@@ -2063,13 +2065,13 @@ static const char *htmlPage() {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Ring Timeout (seconds)</label>
-                <input type="number" id="vc_ring_timeout" min="10" max="999" step="1" value="30" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,3)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
-                <div style="font-size:11px;color:#999;margin-top:4px">Seconds to wait for answer before moving to next contact</div>
+                <input type="number" id="vc_ring_timeout" min="10" max="45" step="1" value="30" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,3)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <div style="font-size:11px;color:#999;margin-top:4px">Seconds to wait for answer before moving to next contact(10-45)</div>
               </div>
               <div>
                 <label style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Delay Between Calls (seconds)</label>
-                <input type="number" id="vc_inter_delay" min="1" max="99" step="1" value="5" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,2)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
-                <div style="font-size:11px;color:#999;margin-top:4px">Pause between consecutive calls</div>
+                <input type="number" id="vc_inter_delay" min="1" max="60" step="1" value="5" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,2)" style="width:160px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px">
+                <div style="font-size:11px;color:#999;margin-top:4px">Pause between consecutive calls(1-60)</div>
               </div>
             </div>
           </div>
@@ -3263,8 +3265,8 @@ function saveVoiceCallConfig(){
   var delayVal = parseInt(delayEl ? delayEl.value : '5', 10);
   if (isNaN(rtVal)) rtVal = 30;
   if (isNaN(delayVal)) delayVal = 5;
-  rtVal = Math.max(10, Math.min(999, rtVal));
-  delayVal = Math.max(1, Math.min(99, delayVal));
+  rtVal = Math.max(10, Math.min(45, rtVal));
+  delayVal = Math.max(1, Math.min(60, delayVal));
   if (rtEl) rtEl.value = rtVal;
   if (delayEl) delayEl.value = delayVal;
   p.append('enabled', document.getElementById('vc_enabled').checked ? '1' : '0');

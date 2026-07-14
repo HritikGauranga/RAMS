@@ -12,7 +12,8 @@
 
 namespace {
   constexpr uint32_t TCP_TASK_STACK      = 6144;
-  constexpr uint32_t MODEM_TASK_STACK    = 8192;
+  constexpr uint32_t MODEM_TASK_STACK    = 16384;
+
   constexpr uint32_t AP_TASK_STACK       = 4096;
   constexpr uint32_t IOSCANNER_TASK_STACK = 4096;
 }

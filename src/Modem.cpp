@@ -704,20 +704,25 @@ static bool processContactAssignmentCommand(const String &sender, const String &
     pin.trim(); number.trim(); inputToken.trim();
     bool voiceFlag = false;
     bool smsFlag = false;
-    for (size_t i = 4; i < partCount; ++i) {
-      String flag = parts[i];
-      flag.trim();
-      flag.toUpperCase();
-      for (size_t j = 0; j < flag.length(); ++j) {
-        char c = flag.charAt(j);
-        if (c == 'V') voiceFlag = true;
-        else if (c == 'S') smsFlag = true;
-      }
+  for (size_t i = 4; i < partCount; ++i) {
+    String flag = parts[i];
+    flag.trim();
+    flag.toUpperCase();
+    for (size_t j = 0; j < flag.length(); ++j) {
+      char c = flag.charAt(j);
+      if (c == 'V') voiceFlag = true;
+      else if (c == 'S') smsFlag = true;
     }
-    if (!voiceFlag && !smsFlag) {
-      sendSMS(sender, "ERROR: Invalid command format");
-      return true;
-    }
+  }
+  if (!voiceFlag && !smsFlag) {
+    sendSMS(sender, "ERROR: Invalid command format");
+    return true;
+  }
+
+  // IMPORTANT: updateContactNotificationFlags() currently only sets bits to true,
+  // but does not clear the other mode. That makes %V unable to uncheck %S in UI.
+  // So we apply clear+set here by writing both flags.
+
     if (!validatePin(pin)) {
       sendSMS(sender, "ERROR: Invalid PIN");
       return true;

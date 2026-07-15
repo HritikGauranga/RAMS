@@ -50,6 +50,7 @@ static void setModemReady(bool ready) {
 }
 
 static bool sendSMS(const String &number, const String &message);
+static constexpr size_t MAX_GSM_SMS_CHARS = 160;
 
 // Normalize to a modem-safe destination:
 // - keeps a single leading '+' (E.164)
@@ -278,21 +279,25 @@ static String buildSystemStatusSMS() {
 
 static String buildInputStatusSMS() {
   SystemSnapshot snap = Shared_getSnapshot();
-  String msg = "[Digital Inputs]\n";
-  msg += buildSMSHeader() + "\n";
+  // String msg = buildSMSHeader() + "\n";
+  String msg = "[DI]\n";
+
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};
     Shared_getDigitalInputConfig(i, cfg);
-    bool inAlarm = snap.digitalInputs[i] != 0;
+
     String name = String(cfg.name);
-    bool nameDefined = name.length() > 0;
-    if (!nameDefined)
-        name = "--";
-    msg += "DI" + String(i + 1) + "(" + name + "): "
-        + String(nameDefined ? (inAlarm ? "Alarm" : "Normal") : "Not Defined")
-        + "\n";
-}
-  msg += "[Analog Inputs]\n";
+    bool isDefined = cfg.enabled && name.length() > 0;
+    bool inAlarm = snap.digitalInputs[i] != 0;
+
+    if (!isDefined) {
+      msg += "DI" + String(i + 1) + " --: NA\n";
+    } else {
+      msg += "DI" + String(i + 1) + " " + name + ": " + (inAlarm ? "Alarm" : "Normal") + "\n";
+    }
+  }
+
+  msg += "[AI]\n";
   for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
     AnalogInputConfig cfg = {};
     Shared_getAnalogInputConfig(i, cfg);
@@ -301,20 +306,20 @@ static String buildInputStatusSMS() {
     Shared_getAIAlarmState(i, inAlarm);
 
     String name = String(cfg.name);
-    bool nameDefined = name.length() > 0;
+    bool isDefined = cfg.enabled && name.length() > 0;
 
-    if (!nameDefined)
-        name = "--";
-    msg += "AI" + String(i + 1) + "(" + name + "): ";
-    if (!nameDefined) {
-        msg += "Not Defined\n";
-    } else {
-        msg += String(snap.analogInputs[i], 2);
-        if (cfg.enabled && cfg.engineering_unit[0] != '\0')
-            msg += " " + String(cfg.engineering_unit);
-        msg += ", " + String(inAlarm ? "Alarm" : "Normal") + "\n";
+    if (!isDefined) {
+      msg += "AI" + String(i + 1) + " --: NA\n";
+      continue;
     }
-}
+
+    msg += "AI" + String(i + 1) + " " + name + ": " + String(snap.analogInputs[i], 2);
+    if (cfg.engineering_unit[0] != '\0') {
+      msg += String(cfg.engineering_unit);
+    }
+    msg += String(", ") + (inAlarm ? "Alarm" : "Normal") + "\n";
+  }
+
   return msg;
 }
 
@@ -355,7 +360,7 @@ static String buildAlarmStatusSMS() {
     Shared_getDigitalInputConfig(i, cfg);
     String name = String(cfg.name);
     if (name.length() == 0) name = "DI" + String(i + 1);
-    msg += name + ": Alarm\n";
+    msg += "DI" + String(i + 1) + "(" + name + "): Alarm\n";
     any = true;
   }
   for (size_t i = 0; i < ANALOG_INPUT_COUNT; ++i) {
@@ -366,7 +371,7 @@ static String buildAlarmStatusSMS() {
     Shared_getAnalogInputConfig(i, cfg);
     String name = String(cfg.name);
     if (name.length() == 0) name = "AI" + String(i + 1);
-    msg += name + ": " + String(snap.analogInputs[i], 2);
+    msg += "AI" + String(i + 1) + "(" + name + "): " + String(snap.analogInputs[i], 2);
     if (cfg.engineering_unit[0] != '\0') msg += " " + String(cfg.engineering_unit);
     msg += ", Alarm\n";
     any = true;
@@ -1011,7 +1016,7 @@ static bool waitForNetwork() {
 // ---------------------------------------------------------------------------
 // sendSMS — two-step AT+CMGS exchange
 // ---------------------------------------------------------------------------
-static bool sendSMS(const String &number, const String &message) {
+static bool sendSingleSMS(const String &number, const String &message) {
   if (!modemReady) {
     Serial.println("[SMS] ERROR: Modem not ready");
     return false;
@@ -1099,6 +1104,33 @@ static bool sendSMS(const String &number, const String &message) {
     }
   }
   return ok;
+}
+
+static bool sendSMS(const String &number, const String &message) {
+  if (message.length() <= MAX_GSM_SMS_CHARS) {
+    return sendSingleSMS(number, message);
+  }
+
+  size_t totalSegments = (message.length() + MAX_GSM_SMS_CHARS - 1) / MAX_GSM_SMS_CHARS;
+  Serial.printf("[SMS] Payload too long for single GSM SMS (%u chars) - splitting into %zu segments\n",
+                (unsigned)message.length(), totalSegments);
+
+  for (size_t seg = 0; seg < totalSegments; ++seg) {
+    size_t start = seg * MAX_GSM_SMS_CHARS;
+    size_t end = min((size_t)(start + MAX_GSM_SMS_CHARS), (size_t)message.length());
+    String chunk = message.substring(start, end);
+
+    Serial.printf("[SMS] Sending segment %zu/%zu to %s\n", seg + 1, totalSegments, number.c_str());
+    if (!sendSingleSMS(number, chunk)) {
+      return false;
+    }
+
+    if (seg + 1 < totalSegments) {
+      delay(500);
+    }
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1195,29 +1227,6 @@ static String buildAnalogReturnSMS(const AnalogInputConfig &cfg, float value) {
   return msg;
 }
 
-static void dispatchAISMS(const AIPendingSMS &pending) {
-  AnalogInputConfig cfg = {};
-  if (!Shared_getAnalogInputConfig(pending.index, cfg)) return;
-  if (!cfg.enabled) return;
-
-  ContactList rec = {};
-  if (!Shared_getRecipientContacts(rec) || rec.count == 0) return;
-
-  String msg = pending.isAlarm ? buildAnalogAlarmSMS(cfg, pending.value)
-                               : buildAnalogReturnSMS(cfg, pending.value);
-
-  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
-    if (!rec.items[i].enabled) continue;
-    if (!(cfg.selected_contacts & (1 << i))) continue;
-    String number = String(rec.items[i].number);
-    if (number.length() == 0) continue;
-    String normalized;
-    if (!normalizePhoneNumber(number, normalized)) continue;
-    if (!modemReady) break;
-    sendSMS(normalized, msg);
-  }
-}
-
 static String buildAlarmSMS(const DigitalInputConfig &cfg) {
   String type  = cfg.normallyClosed ? "NC" : "NO";
   String state = String(cfg.alarm_message);
@@ -1245,35 +1254,10 @@ static String buildReturnSMS(const DigitalInputConfig &cfg) {
 }
 
 // ---------------------------------------------------------------------------
-// dispatchDISMS - sends alarm or return SMS from DI queue entry
-// ---------------------------------------------------------------------------
-static void dispatchDISMS(const DIPendingSMS &pending) {
-  DigitalInputConfig diCfg = {};
-  if (!Shared_getDigitalInputConfig(pending.index, diCfg)) return;
-  if (!diCfg.enabled) return;
-
-  ContactList rec = {};
-  if (!Shared_getRecipientContacts(rec) || rec.count == 0) return;
-
-  String msg = pending.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
-
-  for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
-    if (!rec.items[i].enabled) continue;
-    if (!(diCfg.selected_contacts & (1 << i))) continue;
-    String number = String(rec.items[i].number);
-    if (number.length() == 0) continue;
-    String normalized;
-    if (!normalizePhoneNumber(number, normalized)) continue;
-    if (!modemReady) break;
-    sendSMS(normalized, msg);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Modem_getSignalStrength — returns cached RSSI, updated by modem task
 // ---------------------------------------------------------------------------
 int8_t Modem_getSignalStrength() {
-  if (simMissingLatched) return -2;
+  if (simMissingLatched) return -2; 
   if (!modemReady) return -1;
   return cachedRssi;
 }

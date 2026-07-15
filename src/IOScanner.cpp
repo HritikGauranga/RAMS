@@ -137,16 +137,6 @@ static bool checkAnalogReturn(float value, const AnalogInputConfig &cfg) {
   }
 }
 
-// Post AI alarm/return SMS to Modem task queue
-static void sendAnalogAlarmSMS(size_t index, const AnalogInputConfig &cfg, float value, bool isAlarm) {
-  if (!cfg.enabled) return;
-  if (isAlarm && !cfg.alarm_sms_enabled) return;
-  if (!isAlarm && !cfg.return_sms_enabled) return;
-  Shared_postAIPendingSMS(index, isAlarm, value);
-  Serial.printf("[AI%d] %s SMS queued (value: %.2f %s)\n",
-                index + 1, isAlarm ? "ALARM" : "RETURN", value, cfg.engineering_unit);
-}
-
 // Process analog input
 static void processAnalogInput(size_t index) {
   if (index >= ANALOG_INPUT_COUNT) return;

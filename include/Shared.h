@@ -153,28 +153,6 @@ bool Shared_saveRecipientContacts(const ContactList &list);
 bool Shared_setAIAlarmState(size_t index, bool inAlarm);
 bool Shared_getAIAlarmState(size_t index, bool &out);
 
-// AI pending SMS queue (posted by IOScanner, consumed by Modem task)
-// Queue depth 4 per AI: alarm and return can both be pending without loss.
-struct AIPendingSMS {
-  size_t  index;
-  bool    isAlarm;
-  float   value;
-  bool    valid;
-};
-constexpr size_t AI_SMS_QUEUE_DEPTH = 4;
-bool Shared_postAIPendingSMS(size_t index, bool isAlarm, float value);
-bool Shared_takeAIPendingSMS(AIPendingSMS &out);
-
-// DI pending SMS queue (posted by IOScanner on alarm/return, consumed by Modem task)
-struct DIPendingSMS {
-  size_t index;
-  bool   isAlarm;
-  bool   valid;
-};
-constexpr size_t DI_SMS_QUEUE_DEPTH = 4;
-bool Shared_postDIPendingSMS(size_t index, bool isAlarm);
-bool Shared_takeDIPendingSMS(DIPendingSMS &out);
-
 // Heartbeat (Status Message) config
 struct HeartbeatConfig {
   bool     enabled;

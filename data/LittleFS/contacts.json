@@ -1,0 +1,6 @@
+{"authorized":[],"recipients":[
+  {"enabled":true,"name":"Alice","number":"+1234567890","sms_enabled":true,"call_enabled":true},
+  {"enabled":true,"name":"Bob","number":"+1987654321","sms_enabled":false,"call_enabled":true},
+  {"enabled":false,"name":"Charlie","number":"+1098765432","sms_enabled":true,"call_enabled":false}
+]}
+

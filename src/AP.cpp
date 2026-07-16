@@ -2324,7 +2324,7 @@ function loadDashboard(){
           var type = di.normally_closed ? 'NC' : 'NO';
           var rowStyle = di.enabled ? '' : 'opacity:0.4;background:#f3f4f6;';
           if (di.enabled && di.acknowledged && di.in_alarm) {
-            rowStyle = 'background:#x;';
+            rowStyle = 'background:#ffd9b8;';
           }
           diHtml += '<tr style="' + rowStyle + '"><td style="padding:10px;border-bottom:1px solid #e5e7eb"><strong>DI' + (idx+1) + '</strong></td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + escapeHtml(di.name || '-') + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb">' + type + '</td><td style="padding:10px;border-bottom:1px solid #e5e7eb"><span ' + badge + '>' + status + '</span></td></tr>';
         });

@@ -1,7 +1,5 @@
 #include "IOScanner.h"
 #include "Shared.h"
-#include "Modem.h"
-#include "CallManager.h"
 #include <driver/adc.h>
 #include <esp_adc_cal.h>
 

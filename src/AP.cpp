@@ -7,8 +7,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 #include <time.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstring>
 #include <new>
 
 static AsyncWebServer *server            = nullptr;

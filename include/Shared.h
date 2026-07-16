@@ -12,8 +12,6 @@ constexpr size_t MAX_PHONE_LIST      = 30; // total phone slots for device
 constexpr size_t PHONE_NUMBER_LENGTH = 20;
 constexpr size_t MAX_PHONE_PER_LIST  = 30;
 
-// Legacy newline phone list removed in favor of Contact/ContactList
-
 struct Contact {
   bool enabled;
   char name[32];

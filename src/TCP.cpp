@@ -8,8 +8,6 @@
 #include <esp_log.h>
 #include <new>
 
-// Modbus TCP server removed for RAMS; keep only Ethernet link + DHCP management
-
 // W5500 SPI pin map (matches existing wiring in this project)
 static const int ETH_SPI_SCK  = 18;
 static const int ETH_SPI_MISO = 19;
@@ -49,10 +47,7 @@ static bool linkDownStateLogged = false;
 static unsigned long lastDhcpPromotionDeferredLogMs = 0;
 static constexpr unsigned long TCP_IDLE_LOOP_MS = 50;
 static constexpr unsigned long TCP_ACTIVE_LOOP_MS = 10;
-static constexpr unsigned long MODBUS_TCP_STATUS_LOG_MS = 60000;
-static constexpr unsigned long MODBUS_TCP_ACTIVE_WINDOW_MS = 60000;
 static constexpr unsigned long DHCP_PROMOTION_DEFER_LOG_INTERVAL_MS = 30000;
-static constexpr bool AUTO_PROMOTE_STATIC_FALLBACK_TO_DHCP = false;
 static bool waitForEthIP(unsigned long timeoutMs);
 static const char *currentEthModeLabel();
 static bool acquireDhcpLease(unsigned long timeoutMs);
@@ -66,9 +61,6 @@ static void suppressW5500DisconnectNoise() {
 }
 
 static void resetTcpServerState(const char *reasonTag) {
-  // Previously reset Modbus TCP server and clients. For RAMS we rely on
-  // AsyncWebServer (started by AP task) to provide the HTTP UI. Keep a log
-  // entry for diagnostics and mark network service as not ready.
   Serial.print("[ETH] TCP service reset: ");
   Serial.println(reasonTag);
   networkReady = false;
@@ -86,8 +78,6 @@ static void logRecoveryOutcome(const char *pathTag) {
 }
 
 static bool ensureNetworkServiceStarted() {
-  // For RAMS we don't run Modbus TCP server. Return true when Ethernet is
-  // initialized and has a usable IP so the AsyncWebServer can serve over it.
   return ethInitialized && networkReady && lastKnownLinkState;
 }
 static bool isDhcpClientStarted() {
@@ -394,7 +384,7 @@ static void TCP_maintainDHCP() {
   // Keep static fallback always-on unless explicitly enabled.
   // DHCP promotion probes can temporarily drop IP to 0.0.0.0 and disrupt
   // HTTP/Modbus availability even when fallback networking is healthy.
-  if (!AUTO_PROMOTE_STATIC_FALLBACK_TO_DHCP) {
+  if (!false) {
     return;
   }
 
@@ -597,7 +587,7 @@ static void TCP_monitorEthernetLink() {
 
       // If DHCP is configured, explicitly re-request it on link restore.
       // Without this, the stack can remain on a previously applied static IP.
-      if (runningOnStaticFallback && !AUTO_PROMOTE_STATIC_FALLBACK_TO_DHCP) {
+      if (runningOnStaticFallback && !false) {
         GatewaySettings settings = {};
         if (Shared_getGatewaySettings(settings)) {
           recoverW5500Link(settings, "link-restored-static-fallback", true);
@@ -635,9 +625,6 @@ static void TCP_monitorEthernetLink() {
     }
   }
 }
-
-// Modbus/TCP client handling and register sync removed for RAMS build.
-// The Web UI and REST API are served by AsyncWebServer in AP task.
 
 void TCP_taskLoop(void *pvParameters) {
   (void)pvParameters;

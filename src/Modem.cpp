@@ -450,41 +450,6 @@ static String buildIpStatusSMS() {
   return msg;
 }
 
-// static void processIpRequest(const String &sender, const String &body) {
-//   if (!isAuthorizedSender(sender)) {
-//     Serial.println("[SMS] Unauthorized sender for IP request: " + sender);
-//     return;
-//   }
-
-//   String upperBody = body;
-//   upperBody.toUpperCase();
-//   int cmdIdx = upperBody.indexOf("GET IP%");
-//   if (cmdIdx < 0) {
-//     Serial.println("[SMS] Invalid IP request format from: " + sender);
-//     return;
-//   }
-
-//   String pin = body.substring(cmdIdx + 7);
-//   int newline = pin.indexOf('\n');
-//   if (newline >= 0) pin = pin.substring(0, newline);
-//   pin.trim();
-
-//   SIMConfig simCfg = {};
-//   Shared_getSIMConfig(simCfg);
-//   String storedPin = String(simCfg.relay_pin);
-//   storedPin.trim();
-
-//   if (storedPin.length() == 0 || pin != storedPin) {
-//     Serial.println("[SMS] Invalid PIN for IP request from: " + sender);
-//     return;
-//   }
-
-//   String msg = buildIpStatusSMS();
-//   if (!sendSMS(sender, msg)) {
-//     Serial.println("[SMS] Failed to send IP SMS to " + sender);
-//   }
-// }
-
 static bool splitCommandLine(const String &line, String parts[], size_t maxParts, size_t &outCount) {
   outCount = 0;
   String trimmed = line;
@@ -929,8 +894,6 @@ static void checkAndProcessSMS() {
           // handled by new contact management commands
         } else if (upperBody.indexOf("GET STATUS") >= 0) {
           processStatusRequest(sender);
-        // } else if (upperBody.indexOf("GET IP%") >= 0) {
-        //   processIpRequest(sender, body);
         } else if (upperBody.indexOf("GET ALARM") >= 0) {
           processAlarmRequest(sender);
         } else if (upperBody.indexOf("GET INPUT") >= 0) {
@@ -967,8 +930,6 @@ static void checkAndProcessSMS() {
       // handled by new contact management commands
     } else if (upperBody.indexOf("GET STATUS") >= 0) {
       processStatusRequest(sender);
-    // } else if (upperBody.indexOf("GET IP%") >= 0) {
-    //   processIpRequest(sender, body);
     } else if (upperBody.indexOf("GET ALARM") >= 0) {
       processAlarmRequest(sender);
     } else if (upperBody.indexOf("GET INPUT") >= 0) {

@@ -20,7 +20,6 @@ static const char    *AP_PASS_FIXED     = "MSys@1234";
 static const char    *AUTH_COOKIE_NAME  = "MSMSG_AUTH";
 static const char    *SERIAL_FILE_PATH  = "/serialnumber.txt";
 static const char    *SERIAL_META_PATH  = "/serial_meta.txt";
-// MB map CSV removed for RAMS; configuration will be handled via Web UI
 static String         gAuthSessionToken = "";
 #ifndef FW_BUILD_TAG
 #define FW_BUILD_TAG __DATE__ " " __TIME__
@@ -504,7 +503,6 @@ void printAPStatus() {
 // Build a JSON array of all loaded message configs for the table view.
 // Format: [{"no":1,"phones":["081...","","","",""],"text":"ALARM..."},...]
 // ---------------------------------------------------------------------------
-// Message CSV/table support removed for RAMS firmware
 
 static void setupWebServerRoutes() {
   if (server == nullptr) return;
@@ -591,9 +589,6 @@ static void setupWebServerRoutes() {
     String msg = "Serial number saved and locked successfully.";
     request->send(200, "text/html", serialNumberPage(current, msg, true));
   });
-
-  // Gateway config page and API removed; Network configuration handled under
-  // the Network tab in the Web UI which currently fetches /api/dashboard.
 
   server->on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
@@ -1384,8 +1379,6 @@ static void setupWebServerRoutes() {
     sendHtmlPage(request);
   });
 
-  // Message CSV endpoints removed for RAMS; configuration is handled via Web UI
-
   serverRoutesSetup = true;
 }
 
@@ -1436,10 +1429,6 @@ void AP_taskLoop(void *pvParameters) {
   // Bring up base Wi-Fi stack without connecting, required by Async web stack.
   WiFi.mode(WIFI_STA);
   delay(50);
-
-  // Reset old serial state when firmware build changes.
-  // DISABLED: Serial number should persist across firmware updates
-  // clearStaleSerialForNewBuild();
 
   // Keep Web UI always active (Ethernet IP + AP IP when AP mode is enabled).
   if (server == nullptr) {
@@ -2031,7 +2020,6 @@ static const char *htmlPage() {
           </div>
         </div>
       </div>
-      <!-- Alarm Management tab removed -->
       <div id="phones" class="tab" style="display:none">
         <div class="panel">
           <div style="margin-bottom:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #4CAF50">

@@ -49,7 +49,6 @@ void setup() {
   // Initialize shared state after filesystem is mounted
   Shared_init();
 
-  // MBmap CSV and Modbus RTU removed; keep gateway settings load
   Shared_loadGatewaySettings();
 
   // Keep lwIP active for always-on Web UI; AP task switches to AP_STA when needed.

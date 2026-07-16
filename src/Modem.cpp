@@ -1,6 +1,8 @@
 #include "Modem.h"
 #include "Shared.h"
 #include "CallManager.h"
+#include "PhoneUtils.h"
+#include "NetworkUtils.h"
 #include <HardwareSerial.h>
 #include <LittleFS.h>
 #include <ETH.h>
@@ -51,37 +53,6 @@ static void setModemReady(bool ready) {
 
 static bool sendSMS(const String &number, const String &message);
 static constexpr size_t MAX_GSM_SMS_CHARS = 160;
-
-// Normalize to a modem-safe destination:
-// - keeps a single leading '+' (E.164)
-// - allows digits only after optional '+'
-// - rejects any separators/spaces inside the number
-static bool normalizePhoneNumber(const String &input, String &normalized) {
-  normalized = "";
-  String number = input;
-  number.trim();
-  if (number.length() == 0) return false;
-
-  bool plusSeen = false;
-  for (size_t i = 0; i < number.length(); ++i) {
-    char c = number.charAt(i);
-    if (c == '+') {
-      if (i != 0 || plusSeen) return false;
-      plusSeen = true;
-      normalized += c;
-      continue;
-    }
-    if (c >= '0' && c <= '9') {
-      normalized += c;
-      continue;
-    }
-    return false;
-  }
-
-  size_t digitStart = (normalized.length() > 0 && normalized.charAt(0) == '+') ? 1 : 0;
-  size_t digitCount = normalized.length() - digitStart;
-  return digitCount >= 10 && digitCount <= 15;
-}
 
 // ---------------------------------------------------------------------------
 // AT command (with optional silent mode)
@@ -237,10 +208,6 @@ static String mapSignalStrength(int8_t rssi) {
   if (rssi >= 10) return "Fair";
   if (rssi >= 5) return "Weak";
   return "Very Weak";
-}
-
-static String ipBytesToString(const uint8_t ip[4]) {
-  return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
 }
 
 static String buildSMSHeader() {
@@ -437,10 +404,10 @@ static String buildIpStatusSMS() {
     }
   }
   if (ipAddress.length() == 0) {
-    ipAddress = ipBytesToString(settings.staticIp);
+    ipAddress = util_ipToString(IPAddress(settings.staticIp[0], settings.staticIp[1], settings.staticIp[2], settings.staticIp[3]));
   }
 
-  String gateway = ipBytesToString(settings.gatewayIp);
+  String gateway = util_ipToString(IPAddress(settings.gatewayIp[0], settings.gatewayIp[1], settings.gatewayIp[2], settings.gatewayIp[3]));
   String dhcp = settings.useDhcp ? "Enabled" : "Disabled";
 
   String msg = buildSMSHeader() + "\n";
@@ -906,6 +873,8 @@ static void checkAndProcessSMS() {
           }
         } else {
           int cmdIdx = body.indexOf("Set Relay%");
+          if (cmdIdx < 0) cmdIdx = body.indexOf("SET RELAY%");
+          if (cmdIdx < 0) cmdIdx = body.indexOf("set relay%");
           if (cmdIdx >= 0) {
             processRelayCommand(sender, body.substring(cmdIdx));
           }
@@ -942,6 +911,8 @@ static void checkAndProcessSMS() {
       }
     } else {
       int cmdIdx = body.indexOf("Set Relay%");
+      if (cmdIdx < 0) cmdIdx = body.indexOf("SET RELAY%");
+      if (cmdIdx < 0) cmdIdx = body.indexOf("set relay%");
       if (cmdIdx >= 0) {
         processRelayCommand(sender, body.substring(cmdIdx));
       }
@@ -1292,7 +1263,7 @@ void Modem_task(void *pvParameters) {
           String number = String(rec.items[i].number);
           if (number.length() == 0) continue;
           String normalized;
-          if (!normalizePhoneNumber(number, normalized)) continue;
+          if (!util_normalizePhoneNumber(number, normalized)) continue;
           if (!modemReady) break;
           sendSMS(normalized, msg);
         }
@@ -1330,7 +1301,7 @@ void Modem_task(void *pvParameters) {
               if (!(notifEv.selected_contacts & (1UL << i))) continue;
               if (!rec.items[i].sms_enabled) continue;
               String normalized;
-              if (!normalizePhoneNumber(String(rec.items[i].number), normalized)) continue;
+              if (!util_normalizePhoneNumber(String(rec.items[i].number), normalized)) continue;
               if (!modemReady) break;
               sendSMS(normalized, msg);
             }

@@ -1,5 +1,9 @@
 #include "Shared.h"
+#include "StringUtils.h"
+#include "PhoneUtils.h"
+#include "NetworkUtils.h"
 #include <LittleFS.h>
+#include <cstring>
 #include <time.h>
 
 const int BUTTON_PIN             = 33;
@@ -57,63 +61,6 @@ static time_t  lastEventTime = 0;
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
-static String trimCopy(const String &value) {
-  String copy = value;
-  copy.trim();
-  return copy;
-}
-
-static bool isValidPhoneFormat(const String &number) {
-  String trimmed = number;
-  trimmed.trim();
-  if (trimmed.length() == 0) return false;
-  if (trimmed.length() > PHONE_NUMBER_LENGTH - 1) return false;
-  if (trimmed.charAt(0) == '+') {
-    size_t digitCount = trimmed.length() - 1;
-    if (digitCount < 10 || digitCount > 15) return false;
-    for (size_t i = 1; i < trimmed.length(); ++i) {
-      char c = trimmed.charAt(i);
-      if (c < '0' || c > '9') return false;
-    }
-    return true;
-  } else {
-    size_t digitCount = trimmed.length();
-    if (digitCount < 10 || digitCount > 15) return false;
-    for (size_t i = 0; i < trimmed.length(); ++i) {
-      char c = trimmed.charAt(i);
-      if (c < '0' || c > '9') return false;
-    }
-    return true;
-  }
-}
-
-static bool parseIPv4(const String &src, uint8_t out[4]) {
-  int parts[4] = {0, 0, 0, 0};
-  int p = 0;
-  String token = "";
-  for (size_t i = 0; i < src.length(); ++i) {
-    char c = src.charAt(i);
-    if (c == '.') {
-      if (p > 2 || token.length() == 0) return false;
-      parts[p++] = token.toInt();
-      token = "";
-      continue;
-    }
-    if (c < '0' || c > '9') return false;
-    token += c;
-  }
-  if (p != 3 || token.length() == 0) return false;
-  parts[3] = token.toInt();
-  for (int i = 0; i < 4; ++i) {
-    if (parts[i] < 0 || parts[i] > 255) return false;
-    out[i] = (uint8_t)parts[i];
-  }
-  return true;
-}
-
-static String ipToString(const uint8_t ip[4]) {
-  return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
-}
 
 static bool isValidIOConfigStore(const IOConfigStore &store) {
   return store.magic[0] == 'I' &&
@@ -258,7 +205,7 @@ void Shared_init() {
             if (enIdx >= 0) {
               int colon = obj.indexOf(':', enIdx);
               if (colon >= 0) {
-                String val = trimCopy(obj.substring(colon + 1));
+                String val = util_trimCopy(obj.substring(colon + 1));
                 if (val.startsWith("true")) c.enabled = true;
                 else c.enabled = false;
               }
@@ -286,7 +233,7 @@ void Shared_init() {
                 if (q1 >= 0 && q2 >= 0) {
                   String n = obj.substring(q1 + 1, q2);
                   n.trim();
-                  if (isValidPhoneFormat(n)) {
+                  if (util_isValidPhoneFormat(n)) {
                     n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
                     hasValidNumber = true;
                   }
@@ -297,7 +244,7 @@ void Shared_init() {
             if (smsIdx >= 0) {
               int colon = obj.indexOf(':', smsIdx);
               if (colon >= 0) {
-                String val = trimCopy(obj.substring(colon + 1));
+                String val = util_trimCopy(obj.substring(colon + 1));
                 c.sms_enabled = val.startsWith("true");
               }
             } else {
@@ -307,7 +254,7 @@ void Shared_init() {
             if (callIdx >= 0) {
               int colon = obj.indexOf(':', callIdx);
               if (colon >= 0) {
-                String val = trimCopy(obj.substring(colon + 1));
+                String val = util_trimCopy(obj.substring(colon + 1));
                 c.call_enabled = val.startsWith("true");
               }
             }
@@ -475,17 +422,17 @@ bool Shared_loadGatewaySettings() {
   if (f) {
     found = true;
     while (f.available()) {
-      String line = trimCopy(f.readStringUntil('\n'));
+      String line = util_trimCopy(f.readStringUntil('\n'));
       if (line.length() == 0) continue;
       int eq = line.indexOf('=');
       if (eq <= 0) continue;
-      String key = trimCopy(line.substring(0, eq));
-      String val = trimCopy(line.substring(eq + 1));
+      String key = util_trimCopy(line.substring(0, eq));
+      String val = util_trimCopy(line.substring(eq + 1));
 
       if (key == "use_dhcp") loaded.useDhcp = (val == "1");
-      else if (key == "static_ip") parseIPv4(val, loaded.staticIp);
-      else if (key == "subnet_mask") parseIPv4(val, loaded.subnetMask);
-      else if (key == "gateway_ip") parseIPv4(val, loaded.gatewayIp);
+      else if (key == "static_ip") { IPAddress ip; if (!util_parseIPv4(val, ip)) return false; loaded.staticIp[0] = ip[0]; loaded.staticIp[1] = ip[1]; loaded.staticIp[2] = ip[2]; loaded.staticIp[3] = ip[3]; }
+      else if (key == "subnet_mask") { IPAddress ip; if (!util_parseIPv4(val, ip)) return false; loaded.subnetMask[0] = ip[0]; loaded.subnetMask[1] = ip[1]; loaded.subnetMask[2] = ip[2]; loaded.subnetMask[3] = ip[3]; }
+      else if (key == "gateway_ip") { IPAddress ip; if (!util_parseIPv4(val, ip)) return false; loaded.gatewayIp[0] = ip[0]; loaded.gatewayIp[1] = ip[1]; loaded.gatewayIp[2] = ip[2]; loaded.gatewayIp[3] = ip[3]; }
       else if (key == "http_port") {
         int port = val.toInt();
         loaded.httpPort = (port >= 1 && port <= 65535) ? (uint16_t)port : 80;
@@ -519,9 +466,9 @@ bool Shared_saveGatewaySettings(const GatewaySettings &settings) {
   }
 
   f.println(String("use_dhcp=") + (settings.useDhcp ? "1" : "0"));
-  f.println(String("static_ip=") + ipToString(settings.staticIp));
-  f.println(String("subnet_mask=") + ipToString(settings.subnetMask));
-  f.println(String("gateway_ip=") + ipToString(settings.gatewayIp));
+  f.println(String("static_ip=") + util_ipToString(IPAddress(settings.staticIp[0], settings.staticIp[1], settings.staticIp[2], settings.staticIp[3])));
+  f.println(String("subnet_mask=") + util_ipToString(IPAddress(settings.subnetMask[0], settings.subnetMask[1], settings.subnetMask[2], settings.subnetMask[3])));
+  f.println(String("gateway_ip=") + util_ipToString(IPAddress(settings.gatewayIp[0], settings.gatewayIp[1], settings.gatewayIp[2], settings.gatewayIp[3])));
   f.println(String("http_port=") + String(settings.httpPort));
   f.close();
   Shared_unlockFileSystem();
@@ -559,26 +506,13 @@ bool Shared_getAIAlarmState(size_t index, bool &out) {
   return true;
 }
 
-static String escapeJsonString(const String &s) {
-  String out = "";
-  for (size_t i = 0; i < s.length(); ++i) {
-    char c = s.charAt(i);
-    if (c == '"' || c == '\\') {
-      out += '\\'; out += c;
-    } else {
-      out += c;
-    }
-  }
-  return out;
-}
-
 bool Shared_saveRecipientContacts(const ContactList &list) {
   ContactList filtered = {};
   for (size_t i = 0; i < list.count; ++i) {
     String num = String(list.items[i].number);
     num.trim();
     if (num.length() == 0) continue;
-    if (!isValidPhoneFormat(num)) return false;
+    if (!util_isValidPhoneFormat(num)) return false;
     if (filtered.count >= MAX_PHONE_PER_LIST) return false;
     filtered.items[filtered.count++] = list.items[i];
   }
@@ -589,8 +523,8 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   out.print("{\"authorized\":[],\"recipients\":[");
   for (size_t i = 0; i < filtered.count; ++i) {
     if (i) out.print(',');
-    String name = escapeJsonString(String(filtered.items[i].name));
-    String num = escapeJsonString(String(filtered.items[i].number));
+    String name = util_escapeJson(String(filtered.items[i].name));
+    String num = util_escapeJson(String(filtered.items[i].number));
     out.print("{\"enabled\":");
     out.print(filtered.items[i].enabled ? "true" : "false");
     out.print(",\"name\":\""); out.print(name); out.print("\"");
@@ -700,9 +634,9 @@ bool Shared_saveSIMConfig(const SIMConfig &cfg) {
     return false;
   }
   
-  String provider = escapeJsonString(String(cfg.service_provider));
-  String phone = escapeJsonString(String(cfg.phone_number));
-  String pin = escapeJsonString(String(cfg.relay_pin));
+  String provider = util_escapeJson(String(cfg.service_provider));
+  String phone = util_escapeJson(String(cfg.phone_number));
+  String pin = util_escapeJson(String(cfg.relay_pin));
   
   f.print("{");
   f.print("\"service_provider\":\""); f.print(provider); f.print("\",");

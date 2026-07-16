@@ -1,6 +1,9 @@
 #include "AP.h"
 #include "Shared.h"
 #include "Modem.h"
+#include "StringUtils.h"
+#include "PhoneUtils.h"
+#include "NetworkUtils.h"
 #include <ESPAsyncWebServer.h>
 #include <ETH.h>
 #include <LittleFS.h>
@@ -64,37 +67,6 @@ static String readCookieValue(const String &cookieHeader, const String &name) {
     start = sep + 1;
   }
   return "";
-}
-
-// Local helpers used by contact parsing (mirror Shared.cpp validation)
-static String trimCopy(const String &value) {
-  String copy = value;
-  copy.trim();
-  return copy;
-}
-
-static bool isValidPhoneFormat(const String &number) {
-  String trimmed = number;
-  trimmed.trim();
-  if (trimmed.length() == 0) return false;
-  if (trimmed.length() > PHONE_NUMBER_LENGTH - 1) return false;
-  if (trimmed.charAt(0) == '+') {
-    size_t digitCount = trimmed.length() - 1;
-    if (digitCount < 10 || digitCount > 15) return false;
-    for (size_t i = 1; i < trimmed.length(); ++i) {
-      char c = trimmed.charAt(i);
-      if (c < '0' || c > '9') return false;
-    }
-    return true;
-  } else {
-    size_t digitCount = trimmed.length();
-    if (digitCount < 10 || digitCount > 15) return false;
-    for (size_t i = 0; i < trimmed.length(); ++i) {
-      char c = trimmed.charAt(i);
-      if (c < '0' || c > '9') return false;
-    }
-    return true;
-  }
 }
 
 static bool isAuthenticated(AsyncWebServerRequest *request) {
@@ -444,49 +416,6 @@ static String serialNumberPage(const String &currentSerial, const String &messag
   return page;
 }
 
-static String ipBytesToString(const uint8_t ip[4]) {
-  return String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]);
-}
-
-static String escapeJson(const String &s) {
-  String out;
-  out.reserve(s.length() * 2);
-  for (size_t i = 0; i < s.length(); ++i) {
-    char c = s.charAt(i);
-    if (c == '"') out += "\\\"";
-    else if (c == '\\') out += "\\\\";
-    else if (c == '\n') out += "\\n";
-    else if (c == '\r') out += "\\r";
-    else if (c == '\t') out += "\\t";
-    else out += c;
-  }
-  return out;
-}
-
-static bool parseIPFromText(const String &src, uint8_t out[4]) {
-  int parts[4] = {0, 0, 0, 0};
-  int p = 0;
-  String token = "";
-  for (size_t i = 0; i < src.length(); ++i) {
-    char c = src.charAt(i);
-    if (c == '.') {
-      if (p > 2 || token.length() == 0) return false;
-      parts[p++] = token.toInt();
-      token = "";
-      continue;
-    }
-    if (c < '0' || c > '9') return false;
-    token += c;
-  }
-  if (p != 3 || token.length() == 0) return false;
-  parts[3] = token.toInt();
-  for (int i = 0; i < 4; ++i) {
-    if (parts[i] < 0 || parts[i] > 255) return false;
-    out[i] = (uint8_t)parts[i];
-  }
-  return true;
-}
-
 void printAPStatus() {
   Serial.println("");
   Serial.println("=== AP Mode Info ===");
@@ -623,7 +552,7 @@ static void setupWebServerRoutes() {
     if (apIp == "0.0.0.0") apIp = "AP Mode Off (10.10.10.10 when enabled)";
     String ethIp = ETH.localIP().toString();
     if (ethIp == "0.0.0.0") {
-      ethIp = ipBytesToString(s.staticIp);
+      ethIp = util_ipToString(IPAddress(s.staticIp[0], s.staticIp[1], s.staticIp[2], s.staticIp[3]));
     }
 
     // Merge SIM info for display: "Provider - Phone Number"
@@ -640,9 +569,9 @@ static void setupWebServerRoutes() {
     body += "\"ap_ip\":\"" + apIp + "\",";
     body += "\"eth_ip\":\"" + ethIp + "\",";
     body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
-    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
-    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
-    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\",";
+    body += "\"static_ip\":\"" + util_ipToString(IPAddress(s.staticIp[0], s.staticIp[1], s.staticIp[2], s.staticIp[3])) + "\",";
+    body += "\"subnet_mask\":\"" + util_ipToString(IPAddress(s.subnetMask[0], s.subnetMask[1], s.subnetMask[2], s.subnetMask[3])) + "\",";
+    body += "\"gateway_ip\":\"" + util_ipToString(IPAddress(s.gatewayIp[0], s.gatewayIp[1], s.gatewayIp[2], s.gatewayIp[3])) + "\",";
     body += "\"fw_build\":\"" + String(FW_BUILD_TAG_VALUE) + "\",";
     body += "\"uptime_ms\":" + String(millis()) + ",";
     body += "\"signal_strength\":\"" + strength + "\",";
@@ -688,7 +617,7 @@ static void setupWebServerRoutes() {
     String tz   = request->hasParam("timezone", true) ? request->getParam("timezone", true)->value() : "";
     site.trim(); addr.trim(); tz.trim();
 
-    String json = "{\"site_name\":\"" + escapeJson(site) + "\",\"site_address\":\"" + escapeJson(addr) + "\",\"timezone\":\"" + escapeJson(tz) + "\"}";
+    String json = "{\"site_name\":\"" + util_escapeJson(site) + "\",\"site_address\":\"" + util_escapeJson(addr) + "\",\"timezone\":\"" + util_escapeJson(tz) + "\"}";
 
     // Apply timezone immediately
     if (tz.length() > 0) {
@@ -737,8 +666,8 @@ static void setupWebServerRoutes() {
       if (i) body += ",";
       body += "{";
       body += "\"enabled\":" + String(cl.items[i].enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + escapeJson(String(cl.items[i].name)) + "\",";
-      body += "\"number\":\"" + escapeJson(String(cl.items[i].number)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(cl.items[i].name)) + "\",";
+      body += "\"number\":\"" + util_escapeJson(String(cl.items[i].number)) + "\",";
       body += "\"sms_enabled\":" + String(cl.items[i].sms_enabled ? "true" : "false") + ",";
       body += "\"call_enabled\":" + String(cl.items[i].call_enabled ? "true" : "false");
       body += "}";
@@ -772,7 +701,7 @@ static void setupWebServerRoutes() {
       if (enIdx >= 0) {
         int colon = obj.indexOf(':', enIdx);
         if (colon >= 0) {
-          String val = trimCopy(obj.substring(colon + 1));
+          String val = util_trimCopy(obj.substring(colon + 1));
           if (val.startsWith("true")) c.enabled = true;
         }
       }
@@ -810,20 +739,20 @@ static void setupWebServerRoutes() {
         String n = obj.substring(q1 + 1, q2);
         n.trim();
         if (n.length() == 0) { String err = String("{\"error\":\"Empty phone number at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
-        if (!isValidPhoneFormat(n)) { String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
+        if (!util_isValidPhoneFormat(n)) { String err = String("{\"error\":\"Invalid phone format at contact ") + String(totalFound) + "\"}"; request->send(400, "application/json", err); return; }
         n.toCharArray(c.number, PHONE_NUMBER_LENGTH);
       }
       // Parse sms_enabled (default true for backward compat)
       int smsIdx = obj.indexOf("\"sms_enabled\"");
       if (smsIdx >= 0) {
         int sc = obj.indexOf(':', smsIdx);
-        if (sc >= 0) { String v = trimCopy(obj.substring(sc + 1)); c.sms_enabled = v.startsWith("true"); }
+        if (sc >= 0) { String v = util_trimCopy(obj.substring(sc + 1)); c.sms_enabled = v.startsWith("true"); }
       } else { c.sms_enabled = true; }
       // Parse call_enabled
       int callIdx = obj.indexOf("\"call_enabled\"");
       if (callIdx >= 0) {
         int sc = obj.indexOf(':', callIdx);
-        if (sc >= 0) { String v = trimCopy(obj.substring(sc + 1)); c.call_enabled = v.startsWith("true"); }
+        if (sc >= 0) { String v = util_trimCopy(obj.substring(sc + 1)); c.call_enabled = v.startsWith("true"); }
       }
       if (cl.count < MAX_PHONE_PER_LIST) cl.items[cl.count++] = c;
       pos = objEnd + 1;
@@ -845,9 +774,9 @@ static void setupWebServerRoutes() {
     }
     String body = "{";
     body += "\"use_dhcp\":" + String(s.useDhcp ? "true" : "false") + ",";
-    body += "\"static_ip\":\"" + ipBytesToString(s.staticIp) + "\",";
-    body += "\"subnet_mask\":\"" + ipBytesToString(s.subnetMask) + "\",";
-    body += "\"gateway_ip\":\"" + ipBytesToString(s.gatewayIp) + "\"";
+    body += "\"static_ip\":\"" + util_ipToString(IPAddress(s.staticIp[0], s.staticIp[1], s.staticIp[2], s.staticIp[3])) + "\",";
+    body += "\"subnet_mask\":\"" + util_ipToString(IPAddress(s.subnetMask[0], s.subnetMask[1], s.subnetMask[2], s.subnetMask[3])) + "\",";
+    body += "\"gateway_ip\":\"" + util_ipToString(IPAddress(s.gatewayIp[0], s.gatewayIp[1], s.gatewayIp[2], s.gatewayIp[3])) + "\"";
     body += "}";
     request->send(200, "application/json", body);
   });
@@ -864,12 +793,16 @@ static void setupWebServerRoutes() {
     String sm = request->hasParam("subnet_mask", true) ? request->getParam("subnet_mask", true)->value() : "";
     String gw = request->hasParam("gateway_ip", true) ? request->getParam("gateway_ip", true)->value() : "";
     if (!s.useDhcp) {
-      if (!parseIPFromText(sip, s.staticIp) ||
-          !parseIPFromText(sm, s.subnetMask) ||
-          !parseIPFromText(gw, s.gatewayIp)) {
+      IPAddress staticIp, subnetMask, gatewayIp;
+      if (!util_parseIPv4(sip, staticIp) ||
+          !util_parseIPv4(sm, subnetMask) ||
+          !util_parseIPv4(gw, gatewayIp)) {
         request->send(400, "application/json", "{\"error\":\"Invalid static network settings\"}");
         return;
       }
+      s.staticIp[0] = staticIp[0]; s.staticIp[1] = staticIp[1]; s.staticIp[2] = staticIp[2]; s.staticIp[3] = staticIp[3];
+      s.subnetMask[0] = subnetMask[0]; s.subnetMask[1] = subnetMask[1]; s.subnetMask[2] = subnetMask[2]; s.subnetMask[3] = subnetMask[3];
+      s.gatewayIp[0] = gatewayIp[0]; s.gatewayIp[1] = gatewayIp[1]; s.gatewayIp[2] = gatewayIp[2]; s.gatewayIp[3] = gatewayIp[3];
     }
 
     s.httpPort = 80;
@@ -900,7 +833,7 @@ static void setupWebServerRoutes() {
       Shared_getDigitalInputConfig(i, di);
       body += "{";
       body += "\"index\":" + String(i) + ",";
-      body += "\"name\":\"" + escapeJson(String(di.name)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(di.name)) + "\",";
       body += "\"normally_closed\":" + String(di.normallyClosed ? "true" : "false") + ",";
       bool diAck = false;
       Shared_getAlarmAck(ALARM_SRC_DI, i, diAck);
@@ -921,7 +854,7 @@ static void setupWebServerRoutes() {
       Shared_getAIAlarmState(i, aiAlarm);
       body += "{";
       body += "\"index\":" + String(i) + ",";
-      body += "\"name\":\"" + escapeJson(String(ai.name)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(ai.name)) + "\",";
       bool aiAck = false;
       Shared_getAlarmAck(ALARM_SRC_AI, i, aiAck);
       body += "\"value\":" + String(snapshot.analogInputs[i], 2) + ",";
@@ -949,7 +882,7 @@ static void setupWebServerRoutes() {
       Shared_getRelayConfig(i, relay);
       body += "{";
       body += "\"index\":" + String(i) + ",";
-      body += "\"name\":\"" + escapeJson(String(relay.name)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(relay.name)) + "\",";
       body += "\"state\":" + String(snapshot.relayState[i] ? "true" : "false") + ",";
       body += "\"enabled\":" + String(relay.enabled ? "true" : "false") + ",";
       body += "\"alarm_control_enabled\":" + String(relay.alarm_control_enabled ? "true" : "false") + ",";
@@ -977,14 +910,14 @@ static void setupWebServerRoutes() {
       body += "{";
       body += "\"index\":" + String(i) + ",";
       body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(cfg.name)) + "\",";
       body += "\"normally_closed\":" + String(cfg.normallyClosed ? "true" : "false") + ",";
       body += "\"tta_ms\":" + String(cfg.tta_ms / 1000) + ",";
       body += "\"ttr_ms\":" + String(cfg.ttr_ms / 1000) + ",";
       body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
       body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
-      body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
-      body += "\"return_message\":\"" + escapeJson(String(cfg.return_message)) + "\",";
+      body += "\"alarm_message\":\"" + util_escapeJson(String(cfg.alarm_message)) + "\",";
+      body += "\"return_message\":\"" + util_escapeJson(String(cfg.return_message)) + "\",";
       body += "\"selected_contacts\":" + String(cfg.selected_contacts);
       body += "}";
     }
@@ -1068,8 +1001,8 @@ static void setupWebServerRoutes() {
       body += "{";
       body += "\"index\":" + String(i) + ",";
       body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
-      body += "\"engineering_unit\":\"" + escapeJson(String(cfg.engineering_unit)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(cfg.name)) + "\",";
+      body += "\"engineering_unit\":\"" + util_escapeJson(String(cfg.engineering_unit)) + "\",";
       body += "\"scale_low\":" + String(cfg.scale_low, 4) + ",";
       body += "\"scale_high\":" + String(cfg.scale_high, 4) + ",";
       body += "\"alarm_type\":" + String(cfg.alarm_type) + ",";
@@ -1079,8 +1012,8 @@ static void setupWebServerRoutes() {
       body += "\"ttr_ms\":" + String(cfg.ttr_ms / 1000) + ",";
       body += "\"alarm_sms_enabled\":" + String(cfg.alarm_sms_enabled ? "true" : "false") + ",";
       body += "\"return_sms_enabled\":" + String(cfg.return_sms_enabled ? "true" : "false") + ",";
-      body += "\"alarm_message\":\"" + escapeJson(String(cfg.alarm_message)) + "\",";
-      body += "\"return_message\":\"" + escapeJson(String(cfg.return_message)) + "\",";
+      body += "\"alarm_message\":\"" + util_escapeJson(String(cfg.alarm_message)) + "\",";
+      body += "\"return_message\":\"" + util_escapeJson(String(cfg.return_message)) + "\",";
       body += "\"selected_contacts\":" + String(cfg.selected_contacts) + ",";
       body += "\"offset\":" + String(cfg.offset, 4);
       body += "}";
@@ -1176,7 +1109,7 @@ static void setupWebServerRoutes() {
       if (i > 0) body += ",";
       body += "{\"index\":" + String((int)i) + ",";
       body += "\"enabled\":" + String(cfg.enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + escapeJson(String(cfg.name)) + "\",";
+      body += "\"name\":\"" + util_escapeJson(String(cfg.name)) + "\",";
       body += "\"sms_control_enabled\":" + String(cfg.sms_control_enabled ? "true" : "false") + ",";
       body += "\"alarm_control_enabled\":" + String(cfg.alarm_control_enabled ? "true" : "false") + ",";
       body += "\"alarm_source\":" + String((int)cfg.alarm_source) + ",";

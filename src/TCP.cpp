@@ -374,92 +374,12 @@ void TCP_init() {
 static void TCP_maintainDHCP() {
   if (!ethInitialized || !dhcpConfigured) return;
   if (!lastKnownLinkState || !networkReady) return;
-  if (!runningOnStaticFallback) {
+
+  // Keep the network on the last stable mode. Background DHCP promotion is
+  // intentionally disabled here because it can briefly drop the interface to
+  // 0.0.0.0 and disrupt the active web/UI service.
+  if (runningOnStaticFallback) {
     return;
-  }
-  unsigned long now = millis();
-  if (now - lastDhcpReacquireMs < DHCP_REACQUIRE_INTERVAL_MS) return;
-  lastDhcpReacquireMs = now;
-
-  // Keep static fallback always-on unless explicitly enabled.
-  // DHCP promotion probes can temporarily drop IP to 0.0.0.0 and disrupt
-  // HTTP/Modbus availability even when fallback networking is healthy.
-  if (!false) {
-    return;
-  }
-
-  // Keep static fallback service uninterrupted. Rebinding to DHCP can
-  // temporarily drop the active IP (0.0.0.0 window), so defer promotion while
-  // the gateway is actively serving traffic or AP mode is in use.
-  if (Shared_isAPModeActive()) {
-    if (now - lastDhcpPromotionDeferredLogMs >= DHCP_PROMOTION_DEFER_LOG_INTERVAL_MS) {
-      Serial.println("[ETH] DHCP promotion deferred to keep static fallback service stable");
-      lastDhcpPromotionDeferredLogMs = now;
-    }
-    return;
-  }
-
-  // We are currently on static fallback; explicitly request DHCP first.
-  if (!enableDhcpMode()) {
-    Serial.println("[ETH] DHCP re-acquire failed: unable to enable DHCP mode");
-    return;
-  }
-
-  if (waitForEthIP(DHCP_REACQUIRE_WAIT_MS) && isUsableDhcpLease()) {
-    runningOnStaticFallback = false;
-    networkReady = true;
-    hadDhcpLeaseSinceBoot = true;
-    networkDegradedSinceMs = 0;
-    dhcpReacquireFailCount = 0;
-    Serial.println("[ETH] DHCP re-acquire success: switched back to DHCP");
-    
-    if (!Shared_lockSPI(pdMS_TO_TICKS(5))) return;
-    Serial.print("[ETH] Mode: ");    Serial.println(currentEthModeLabel());
-    Serial.print("[ETH] IP: ");      Serial.println(ETH.localIP());
-    Serial.print("[ETH] Subnet: ");  Serial.println(ETH.subnetMask());
-    Serial.print("[ETH] Gateway: "); Serial.println(ETH.gatewayIP());
-    Shared_unlockSPI();
-    return;
-  }
-
-  GatewaySettings settings = {};
-  dhcpReacquireFailCount++;
-  Serial.print("[ETH] DHCP re-acquire attempt failed, count=");
-  Serial.println((unsigned int)dhcpReacquireFailCount);
-
-  if (dhcpReacquireFailCount >= DHCP_REACQUIRE_FAILS_BEFORE_REINIT) {
-    if (reinitializeEthStackForDhcp()) {
-      runningOnStaticFallback = false;
-      networkReady = true;
-      hadDhcpLeaseSinceBoot = true;
-      networkDegradedSinceMs = 0;
-      lastKnownLinkState = true;
-      dhcpReacquireFailCount = 0;
-
-      if (Shared_lockSPI(pdMS_TO_TICKS(5))) {
-        Serial.print("[ETH] Mode: ");    Serial.println(currentEthModeLabel());
-        Serial.print("[ETH] IP: ");      Serial.println(ETH.localIP());
-        Serial.print("[ETH] Subnet: ");  Serial.println(ETH.subnetMask());
-        Serial.print("[ETH] Gateway: "); Serial.println(ETH.gatewayIP());
-        Shared_unlockSPI();
-      }
-      return;
-    }
-    dhcpReacquireFailCount = 0;
-  }
-
-  if (Shared_getGatewaySettings(settings)) {
-    // Keep the existing fallback IP if it's still valid. Re-configuring static
-    // on every failed DHCP re-acquire can cause avoidable TCP disruptions.
-    if (Shared_lockSPI(pdMS_TO_TICKS(5))) {
-      bool hasFallbackIp = ETH.linkUp() && isValidIP(ETH.localIP());
-      Shared_unlockSPI();
-      if (hasFallbackIp) {
-        networkReady = true;
-        return;
-      }
-    }
-    networkReady = applyStaticEthConfig(settings, "reassert static fallback");
   }
 }
 

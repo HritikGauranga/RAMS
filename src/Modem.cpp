@@ -24,20 +24,23 @@ static unsigned long lastRssiUpdateMs = 0;
 // Serial AT helpers
 // ---------------------------------------------------------------------------
 static String readSerialATResponse(unsigned long timeout) {
-  String response = "";
+  char responseBuf[256] = {};
+  size_t len = 0;
   unsigned long start      = millis();
   unsigned long lastByteAt = start;
 
   while (millis() - start < timeout) {
-    while (SerialAT.available()) {
-      response += (char)SerialAT.read();
+    while (SerialAT.available() && len < sizeof(responseBuf) - 1) {
+      responseBuf[len++] = (char)SerialAT.read();
       lastByteAt = millis();
       delay(2);
     }
-    if (response.length() > 0 && (millis() - lastByteAt) > 100) break;
+    if (len > 0 && (millis() - lastByteAt) > 100) break;
     delay(10);
   }
 
+  responseBuf[len] = '\0';
+  String response(responseBuf);
   response.trim();
   return response;
 }
@@ -52,7 +55,7 @@ static void setModemReady(bool ready) {
 }
 
 static bool sendSMS(const String &number, const String &message);
-static constexpr size_t MAX_GSM_SMS_CHARS = 160;
+static constexpr size_t MAX_GSM_SMS_CHARS = 320;
 
 // ---------------------------------------------------------------------------
 // AT command (with optional silent mode)
@@ -1119,7 +1122,8 @@ static void initModem() {
 // Modem_init — called from setup()
 // ---------------------------------------------------------------------------
 bool Modem_init() {
-  return true;
+  initModem();
+  return modemReady;
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,8 +1221,8 @@ void Modem_task(void *pvParameters) {
   (void)pvParameters;
   resetPulseSlots();
 
-  // Blocking init — only affects core 0, core 1 tasks run freely
-  initModem();
+  // Startup modem initialization is performed once from Modem_init() during
+  // setup so the task loop does not power-cycle or reconfigure the modem again.
   CallManager_init(SerialAT);
   Serial.println("[MODEM TASK] Init complete, starting SMS processing");
 

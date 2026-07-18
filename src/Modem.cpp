@@ -1123,7 +1123,11 @@ static void initModem() {
 // ---------------------------------------------------------------------------
 bool Modem_init() {
   initModem();
-  return modemReady;
+  if (!modemReady) {
+    Serial.println("[MODEM] Startup readiness check failed — halting boot");
+    return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

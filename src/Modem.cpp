@@ -735,11 +735,12 @@ static void processRelayCommand(const String &sender, const String &body) {
   String content = body;
   int firstPercent = content.indexOf('%');
   int lastPercent = content.lastIndexOf('%');
-  if (firstPercent >= 0 && lastPercent > firstPercent) {
-    content = content.substring(firstPercent + 1, lastPercent);
-  } else if (firstPercent >= 0) {
-    content = content.substring(firstPercent + 1);
+  if (firstPercent < 0 || lastPercent <= firstPercent) {
+    Serial.println("[SMS] Invalid relay command framing: " + body);
+    return;
   }
+  
+  content = content.substring(firstPercent + 1, lastPercent);
   content.trim();
 
   int c1 = content.indexOf(',');
@@ -796,8 +797,6 @@ static void processRelayCommand(const String &sender, const String &body) {
     Serial.println("[SMS] SMS control disabled for relay: " + relayName);
     return;
   }
-
-
 
   bool isOn = state.equalsIgnoreCase("on");
   bool isOff = state.equalsIgnoreCase("off");
@@ -875,9 +874,7 @@ static void checkAndProcessSMS() {
             CallManager_handleSmsAck(sender, body);
           }
         } else {
-          int cmdIdx = body.indexOf("Set Relay%");
-          if (cmdIdx < 0) cmdIdx = body.indexOf("SET RELAY%");
-          if (cmdIdx < 0) cmdIdx = body.indexOf("set relay%");
+          int cmdIdx = upperBody.indexOf("SET RELAY%");
           if (cmdIdx >= 0) {
             processRelayCommand(sender, body.substring(cmdIdx));
           }
@@ -913,9 +910,7 @@ static void checkAndProcessSMS() {
         CallManager_handleSmsAck(sender, body);
       }
     } else {
-      int cmdIdx = body.indexOf("Set Relay%");
-      if (cmdIdx < 0) cmdIdx = body.indexOf("SET RELAY%");
-      if (cmdIdx < 0) cmdIdx = body.indexOf("set relay%");
+      int cmdIdx = upperBody.indexOf("SET RELAY%");
       if (cmdIdx >= 0) {
         processRelayCommand(sender, body.substring(cmdIdx));
       }

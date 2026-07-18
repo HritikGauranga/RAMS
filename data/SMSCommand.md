@@ -43,7 +43,7 @@ Controls a relay output by name. PIN and relay name must match exactly as config
 
 ### Format
 ```
-Set Relay%<PIN>,<RelayName>,<ON|OFF>,<seconds>
+Set Relay%<PIN>,<RelayName>,<ON|OFF>,<seconds>%
 ```
 
 ### Parameters

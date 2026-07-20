@@ -1,4 +1,4 @@
-#include "AP.h"
+  #include "AP.h"
 #include "Shared.h"
 #include "Modem.h"
 #include "StringUtils.h"
@@ -666,7 +666,6 @@ static void setupWebServerRoutes() {
       if (i) body += ",";
       body += "{";
       body += "\"enabled\":" + String(cl.items[i].enabled ? "true" : "false") + ",";
-      body += "\"name\":\"" + util_escapeJson(String(cl.items[i].name)) + "\",";
       body += "\"number\":\"" + util_escapeJson(String(cl.items[i].number)) + "\",";
       body += "\"sms_enabled\":" + String(cl.items[i].sms_enabled ? "true" : "false") + ",";
       body += "\"call_enabled\":" + String(cl.items[i].call_enabled ? "true" : "false");
@@ -703,22 +702,6 @@ static void setupWebServerRoutes() {
         if (colon >= 0) {
           String val = util_trimCopy(obj.substring(colon + 1));
           if (val.startsWith("true")) c.enabled = true;
-        }
-      }
-      int nameIdx = obj.indexOf("\"name\"");
-      if (nameIdx >= 0) {
-        int colon = obj.indexOf(':', nameIdx);
-        int q1 = obj.indexOf('"', colon + 1);
-        int q2 = obj.indexOf('"', q1 + 1);
-        if (q1 >= 0 && q2 >= 0) {
-          String n = obj.substring(q1 + 1, q2);
-          n.trim();
-          if (n.length() > 16) {
-            String err = String("{\"error\":\"Contact name too long at contact ") + String(totalFound) + "\"}";
-            request->send(400, "application/json", err);
-            return;
-          }
-          n.toCharArray(c.name, sizeof(c.name));
         }
       }
       int numIdx = obj.indexOf("\"number\"");
@@ -1959,7 +1942,6 @@ static const char *htmlPage() {
             <div style="font-size:12px;color:#999;margin-bottom:14px">Phone numbers accept digits and optional leading '+', 10-15 digits. SMS/Call checkboxes control notification method per contact.</div>
             <table style="width:100%;border-collapse:collapse;font-size:13px" id="rec_table">
               <thead><tr style="background:#f3f4f6">
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Name</th>
                 <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb">Phone Number</th>
                 <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb">SMS</th>
                 <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb">Voice Call</th>
@@ -2414,7 +2396,7 @@ RecipientPicker.prototype._render = function() {
       if (!c) return;
       var chip = document.createElement('span');
       chip.className = 'rp-chip';
-      chip.textContent = c.name || c.number;
+      chip.textContent = c.number;
       var x = document.createElement('button');
       x.className = 'rp-chip-x';
       x.type = 'button';
@@ -2519,7 +2501,7 @@ RecipientPicker.prototype._renderList = function(listEl, query) {
   var self = this;
   var shown = 0;
   this.contacts.forEach(function(c) {
-    var label = (c.name || '') + ' ' + (c.number || '');
+    var label = c.number || '';
     if (q && label.toLowerCase().indexOf(q) < 0) return;
     shown++;
     var isChecked = self.selected.indexOf(c.idx) >= 0;
@@ -2535,7 +2517,7 @@ RecipientPicker.prototype._renderList = function(listEl, query) {
       else self._deselect(c.idx);
     });
     var txt = document.createElement('span');
-    txt.textContent = (c.name || '-') + ' (' + (c.number || '-') + ')';
+    txt.textContent = c.number || '-';
     if (!isChecked && atMax) txt.style.color = '#bbb';
     item.appendChild(cb);
     item.appendChild(txt);
@@ -2573,7 +2555,7 @@ RecipientPicker.prototype.setContacts = function(allRecipients) {
   this.contacts = [];
   for (var i = 0; i < allRecipients.length; i++) {
     if (allRecipients[i].enabled) {
-      this.contacts.push({ idx: i, name: allRecipients[i].name, number: allRecipients[i].number });
+      this.contacts.push({ idx: i, number: allRecipients[i].number });
     }
   }
   // Remove any selected indices that no longer exist
@@ -3104,11 +3086,10 @@ function saveContacts(){
   var recEls = document.querySelectorAll('#rec_list .contact-row');
   var recArr = [];
   eachNode(recEls, function(el){
-    var name = (el.querySelector('.c_name')||{}).value || '';
     var num = (el.querySelector('.c_number')||{}).value || '';
     var smsEn = !!(el.querySelector('.c_sms_enabled')||{}).checked;
     var callEn = !!(el.querySelector('.c_call_enabled')||{}).checked;
-    recArr.push({enabled:true, name:name, number:num, sms_enabled:smsEn, call_enabled:callEn});
+    recArr.push({enabled:true, number:num, sms_enabled:smsEn, call_enabled:callEn});
   });
 
   var phoneValid = function(n){ if(!n) return true; var m = n.match(/^\+?[0-9]{10,15}$/); return !!m; };
@@ -3132,14 +3113,8 @@ function renderContactList(containerId, arr){
 }
 
 function makeContactRow(item) {
-  item = item || {enabled:true, name:'', number:'', sms_enabled:true, call_enabled:false};
+  item = item || {enabled:true, number:'', sms_enabled:true, call_enabled:false};
   var row = document.createElement('tr'); row.className = 'contact-row';
-  // Name
-  var tdName = document.createElement('td'); tdName.style.padding='6px 8px';
-  var name = document.createElement('input'); name.className='c_name input'; name.placeholder='Name'; name.value=item.name||''; name.maxLength=16;
-  name.style.cssText='padding:5px 7px;font-size:12px;width:140px;border:1px solid #ccc;border-radius:4px';
-  name.oninput = function(){ this.value = this.value.slice(0, 16); };
-  tdName.appendChild(name); row.appendChild(tdName);
   // Number
   var tdNum = document.createElement('td'); tdNum.style.padding='6px 8px';
   var num = document.createElement('input'); num.className='c_number input'; num.placeholder='+1234567890'; num.value=item.number||'';

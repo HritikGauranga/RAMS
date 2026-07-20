@@ -14,7 +14,6 @@ constexpr size_t MAX_PHONE_PER_LIST  = 30;
 
 struct Contact {
   bool enabled;
-  char name[32];
   char number[PHONE_NUMBER_LENGTH];
   bool sms_enabled;   // receives SMS notifications
   bool call_enabled;  // receives voice call notifications

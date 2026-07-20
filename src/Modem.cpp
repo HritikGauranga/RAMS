@@ -532,8 +532,7 @@ static String buildListResponse(bool isAnalog, size_t index) {
     for (size_t i = 0; i < rec.count && lineNo < 5; ++i) {
       if (!(cfg.selected_contacts & (1UL << i))) continue;
       ++lineNo;
-      out += String(lineNo) + ". " + String(rec.items[i].name) + "\n";
-      out += "   " + String(rec.items[i].number) + "\n";
+      out += String(lineNo) + ". " + String(rec.items[i].number) + "\n";
       out += "   Voice: " + String(rec.items[i].call_enabled ? "Yes" : "No") + "\n";
       out += "   SMS: " + String(rec.items[i].sms_enabled ? "Yes" : "No");
       if (lineNo < assigned) out += "\n\n";
@@ -558,8 +557,7 @@ static String buildListResponse(bool isAnalog, size_t index) {
   for (size_t i = 0; i < rec.count && lineNo < 5; ++i) {
     if (!(cfg.selected_contacts & (1UL << i))) continue;
     ++lineNo;
-    out += String(lineNo) + ". " + String(rec.items[i].name) + "\n";
-    out += "   " + String(rec.items[i].number) + "\n";
+    out += String(lineNo) + ". " + String(rec.items[i].number) + "\n";
     out += "   Voice: " + String(rec.items[i].call_enabled ? "Yes" : "No") + "\n";
     out += "   SMS: " + String(rec.items[i].sms_enabled ? "Yes" : "No");
     if (lineNo < assigned) out += "\n\n";
@@ -673,8 +671,31 @@ static bool processContactAssignmentCommand(const String &sender, const String &
     }
     size_t contactIndex;
     if (!findContactIndexByNumber(number, contactIndex)) {
-      sendSMS(sender, "ERROR: Contact does not exist in Contact List");
-      return true;
+      // Auto-create contact if not found
+      ContactList rec = {};
+      if (!Shared_getRecipientContacts(rec)) {
+        sendSMS(sender, "ERROR: Unable to read contact list");
+        return true;
+      }
+      if (rec.count >= MAX_PHONE_PER_LIST) {
+        sendSMS(sender, "ERROR: Maximum contacts reached");
+        return true;
+      }
+      Contact newContact = {};
+      newContact.enabled = true;
+      number.toCharArray(newContact.number, PHONE_NUMBER_LENGTH);
+      newContact.call_enabled = voiceFlag;
+      newContact.sms_enabled = smsFlag;
+      rec.items[rec.count++] = newContact;
+      if (!Shared_saveRecipientContacts(rec)) {
+        sendSMS(sender, "ERROR: Save failed");
+        return true;
+      }
+      // Re-find the contact index after save
+      if (!findContactIndexByNumber(number, contactIndex)) {
+        sendSMS(sender, "ERROR: Contact creation failed");
+        return true;
+      }
     }
     bool isAnalog;
     size_t inputIndex;

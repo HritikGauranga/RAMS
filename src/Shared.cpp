@@ -210,19 +210,6 @@ void Shared_init() {
                 else c.enabled = false;
               }
             }
-            int nameIdx = obj.indexOf("\"name\"");
-            if (nameIdx >= 0) {
-              int colon = obj.indexOf(':', nameIdx);
-              if (colon >= 0) {
-                int q1 = obj.indexOf('"', colon + 1);
-                int q2 = obj.indexOf('"', q1 + 1);
-                if (q1 >= 0 && q2 >= 0) {
-                  String n = obj.substring(q1 + 1, q2);
-                  n.trim();
-                  n.toCharArray(c.name, sizeof(c.name));
-                }
-              }
-            }
             int numIdx = obj.indexOf("\"number\"");
             bool hasValidNumber = false;
             if (numIdx >= 0) {
@@ -523,11 +510,9 @@ bool Shared_saveRecipientContacts(const ContactList &list) {
   out.print("{\"authorized\":[],\"recipients\":[");
   for (size_t i = 0; i < filtered.count; ++i) {
     if (i) out.print(',');
-    String name = util_escapeJson(String(filtered.items[i].name));
     String num = util_escapeJson(String(filtered.items[i].number));
     out.print("{\"enabled\":");
     out.print(filtered.items[i].enabled ? "true" : "false");
-    out.print(",\"name\":\""); out.print(name); out.print("\"");
     out.print(",\"number\":\""); out.print(num); out.print("\"");
     out.print(",\"sms_enabled\":"); out.print(filtered.items[i].sms_enabled ? "true" : "false");
     out.print(",\"call_enabled\":"); out.print(filtered.items[i].call_enabled ? "true" : "false");

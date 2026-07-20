@@ -678,7 +678,7 @@ static bool processContactAssignmentCommand(const String &sender, const String &
         return true;
       }
       if (rec.count >= MAX_PHONE_PER_LIST) {
-        sendSMS(sender, "ERROR: Maximum contacts reached");
+        sendSMS(sender, "ERROR: Contact list is full");
         return true;
       }
       Contact newContact = {};
@@ -712,7 +712,7 @@ static bool processContactAssignmentCommand(const String &sender, const String &
       bool alreadyAssigned = (cfg.selected_contacts & (1UL << contactIndex)) != 0;
       size_t assignedCount = countBitmaskOnes(cfg.selected_contacts);
       if (!alreadyAssigned && assignedCount >= 5) {
-        sendSMS(sender, "ERROR: Maximum contacts reached");
+        sendSMS(sender, "ERROR: Input Contact list is full");
         return true;
       }
       cfg.selected_contacts |= (1UL << contactIndex);
@@ -734,7 +734,7 @@ static bool processContactAssignmentCommand(const String &sender, const String &
     bool alreadyAssigned = (cfg.selected_contacts & (1UL << contactIndex)) != 0;
     size_t assignedCount = countBitmaskOnes(cfg.selected_contacts);
     if (!alreadyAssigned && assignedCount >= 5) {
-      sendSMS(sender, "ERROR: Maximum contacts reached");
+      sendSMS(sender, "ERROR: Input Contact List is full");
       return true;
     }
     cfg.selected_contacts |= (1UL << contactIndex);

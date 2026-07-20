@@ -3089,7 +3089,6 @@ function saveContacts(){
     var num = (el.querySelector('.c_number')||{}).value || '';
     var smsEn = !!(el.querySelector('.c_sms_enabled')||{}).checked;
     var callEn = !!(el.querySelector('.c_call_enabled')||{}).checked;
-    recArr.push({enabled:true, number:num, sms_enabled:smsEn, call_enabled:callEn});
   });
 
   var phoneValid = function(n){ if(!n) return true; var m = n.match(/^\+?[0-9]{10,15}$/); return !!m; };

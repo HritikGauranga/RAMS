@@ -282,15 +282,10 @@ bool CallManager_handleSmsAck(const String &sender, const String &body) {
   String upper = body;
   upper.toUpperCase();
   upper.trim();
-  if (!upper.startsWith("ACK%") && !upper.startsWith("ACK ") && upper != "ACK") return false;
+  if (!upper.startsWith("ACK%")) return false;
 
-  // Extract the input identifier after "ACK" or "ACK%"
-  String inputName;
-  if (upper.startsWith("ACK%")) {
-    inputName = body.substring(4); // after "ACK%"
-  } else if (upper.startsWith("ACK ")) {
-    inputName = body.substring(4); // after "ACK "
-  }
+  // Extract the input identifier after "ACK%"
+  String inputName = body.substring(4);
   inputName.trim();
 
   // Reject empty input name — bare "ACK" must not acknowledge all alarms

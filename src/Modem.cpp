@@ -890,7 +890,7 @@ static void checkAndProcessSMS() {
           processInputRequest(sender);
         } else if (upperBody.indexOf("GET RELAY") >= 0) {
           processRelayStatusRequest(sender);
-        } else if (upperBody.startsWith("ACK%") || upperBody.startsWith("ACK ") || upperBody == "ACK") {
+} else if (upperBody.startsWith("ACK%")) {
           if (isAuthorizedSender(sender)) {
             CallManager_handleSmsAck(sender, body);
           }
@@ -926,7 +926,7 @@ static void checkAndProcessSMS() {
       processInputRequest(sender);
     } else if (upperBody.indexOf("GET RELAY") >= 0) {
       processRelayStatusRequest(sender);
-    } else if (upperBody.startsWith("ACK%") || upperBody.startsWith("ACK ") || upperBody == "ACK") {
+} else if (upperBody.startsWith("ACK%")) {
       if (isAuthorizedSender(sender)) {
         CallManager_handleSmsAck(sender, body);
       }

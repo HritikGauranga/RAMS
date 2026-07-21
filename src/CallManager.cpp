@@ -282,10 +282,71 @@ bool CallManager_handleSmsAck(const String &sender, const String &body) {
   String upper = body;
   upper.toUpperCase();
   upper.trim();
-  if (!upper.startsWith("ACK ") && upper != "ACK") return false;
+  if (!upper.startsWith("ACK%") && !upper.startsWith("ACK ") && upper != "ACK") return false;
 
-  String inputName = body.substring(4);
+  // Extract the input identifier after "ACK" or "ACK%"
+  String inputName;
+  if (upper.startsWith("ACK%")) {
+    inputName = body.substring(4); // after "ACK%"
+  } else if (upper.startsWith("ACK ")) {
+    inputName = body.substring(4); // after "ACK "
+  }
   inputName.trim();
+
+  // Reject empty input name — bare "ACK" must not acknowledge all alarms
+  if (inputName.length() == 0) {
+    Serial.println("[CALL] SMS ACK with no input identifier - ignored to prevent all-acknowledge bug");
+    return true;
+  }
+
+  // ---------------------------------------------------------------
+  // 1. Try matching by input identifier first (DI1, AI1, etc.)
+  // ---------------------------------------------------------------
+  {
+    size_t idx = 0;
+    String upperName = inputName;
+    upperName.toUpperCase();
+    if (upperName.startsWith("DI")) {
+      String num = upperName.substring(2);
+      if (num.length() > 0) {
+        idx = (size_t)num.toInt();
+        if (idx >= 1 && idx <= DIGITAL_INPUT_COUNT) {
+          idx -= 1;
+          SystemSnapshot snap = Shared_getSnapshot();
+          if (snap.digitalInputs[idx] != 0) {
+            DigitalInputConfig cfg = {};
+            Shared_getDigitalInputConfig(idx, cfg);
+            Serial.printf("[CALL] SMS ACK DI%u (%s) from %s\n",
+                          (unsigned)idx + 1, cfg.name, sender.c_str());
+            CallManager_ack(ALARM_SRC_DI, idx);
+            return true;
+          }
+        }
+      }
+    } else if (upperName.startsWith("AI")) {
+      String num = upperName.substring(2);
+      if (num.length() > 0) {
+        idx = (size_t)num.toInt();
+        if (idx >= 1 && idx <= ANALOG_INPUT_COUNT) {
+          idx -= 1;
+          bool active = false;
+          Shared_getAIAlarmState(idx, active);
+          if (active) {
+            AnalogInputConfig cfg = {};
+            Shared_getAnalogInputConfig(idx, cfg);
+            Serial.printf("[CALL] SMS ACK AI%u (%s) from %s\n",
+                          (unsigned)idx + 1, cfg.name, sender.c_str());
+            CallManager_ack(ALARM_SRC_AI, idx);
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // 2. Fall back to matching by configured name
+  // ---------------------------------------------------------------
 
   for (size_t i = 0; i < DIGITAL_INPUT_COUNT; ++i) {
     DigitalInputConfig cfg = {};

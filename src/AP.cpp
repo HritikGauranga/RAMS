@@ -2111,7 +2111,7 @@ static const char *htmlPage() {
                 </div>
               </div>
             </div>
-            <div style="font-size:13px;color:#555;margin-top:10px">Status messages are sent at fixed times only: Once a Day at 10:00 AM; Twice a Week at 10:00 AM on Monday and Thursday; Once a Week at 10:00 AM on Monday.</div>
+            <div style="font-size:13px;color:#555;margin-top:10px">Status messages are sent at fixed times only: Once a Day at 10:00 ; Twice a Week at 10:00 on Monday and Thursday; Once a Week at 10:00 on Monday.</div>
           </div>
           </div>
           <div id="hb_status" style="display:none;margin-top:12px;padding:12px;border-radius:4px"></div>

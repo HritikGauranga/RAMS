@@ -3086,9 +3086,16 @@ function saveContacts(){
   var recEls = document.querySelectorAll('#rec_list .contact-row');
   var recArr = [];
   eachNode(recEls, function(el){
-    var num = (el.querySelector('.c_number')||{}).value || '';
+    var num = ((el.querySelector('.c_number')||{}).value || '').trim();
     var smsEn = !!(el.querySelector('.c_sms_enabled')||{}).checked;
     var callEn = !!(el.querySelector('.c_call_enabled')||{}).checked;
+    if (num.length === 0) return;
+    recArr.push({
+      enabled: true,
+      number: num,
+      sms_enabled: smsEn,
+      call_enabled: callEn
+    });
   });
 
   var phoneValid = function(n){ if(!n) return true; var m = n.match(/^\+?[0-9]{10,15}$/); return !!m; };

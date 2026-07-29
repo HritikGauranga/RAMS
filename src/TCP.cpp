@@ -558,7 +558,7 @@ void TCP_taskLoop(void *pvParameters) {
     lastTcpWorkMs = now;
 
     TCP_monitorEthernetLink();  // Check link health every 5 seconds
-    ensureNetworkServiceStarted();
+    ensureNetworkServiceStarted(); // Ensure TCP service is running if network is ready, 
     TCP_maintainDHCP();
 
     vTaskDelay(pdMS_TO_TICKS(25));

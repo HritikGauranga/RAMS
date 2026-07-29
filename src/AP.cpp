@@ -105,7 +105,9 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f7; font-family: Arial, sans-serif; }
   .panel { width: min(360px, 92vw); background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 24px; }
-  h1 { margin: 0 0 14px; font-size: 20px; color: #1a1a2e; }
+  .brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+  .brand img { width: 48px; height: 48px; object-fit: contain; }
+  .brand h1 { margin: 0; font-size: 20px; color: #1565c0; }
   label { display: block; font-size: 13px; color: #444; margin: 10px 0 6px; }
   input { width: 100%; padding: 10px 12px; border: 1px solid #d9dce2; border-radius: 8px; font-size: 14px; }
   .pass-wrap { position: relative; padding-right: 36px; }
@@ -144,7 +146,10 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
 </head>
 <body>
   <form class="panel" method="POST" action="/login" autocomplete="off">
-    <h1>RAMS Config Login</h1>
+    <div class="brand">
+      <img src="/Gaurangalogo.png?v=2" alt="Logo">
+      <h1>RAMS Config Login</h1>
+    </div>
     __ERROR_BLOCK__
     <label for="user">ID</label>
     <input id="user" name="user" type="text" value="__PREFILLED_USER__" readonly required>

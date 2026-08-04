@@ -406,11 +406,43 @@ static void processDigitalInput(size_t index) {
   }
 }
 
+static bool relayAlarmSourceIsActive(const RelayConfig &rcfg, const SystemSnapshot &snap) {
+  if (!rcfg.alarm_control_enabled) return false;
+  if (rcfg.alarm_source == 0) return false;
+
+  if (rcfg.alarm_source == 7) {
+    for (size_t ai = 0; ai < ANALOG_INPUT_COUNT; ++ai) {
+      bool aiAlarm = false;
+      Shared_getAIAlarmState(ai, aiAlarm);
+      if (aiAlarm) return true;
+    }
+    for (size_t di = 0; di < DIGITAL_INPUT_COUNT; ++di) {
+      if (snap.digitalInputs[di] != 0) return true;
+    }
+    return false;
+  }
+
+  if (rcfg.alarm_source >= 1 && rcfg.alarm_source <= ANALOG_INPUT_COUNT) {
+    bool aiAlarm = false;
+    Shared_getAIAlarmState(rcfg.alarm_source - 1, aiAlarm);
+    return aiAlarm;
+  }
+
+  if (rcfg.alarm_source >= 3 && rcfg.alarm_source <= (3 + DIGITAL_INPUT_COUNT - 1)) {
+    size_t diIndex = rcfg.alarm_source - 3;
+    return snap.digitalInputs[diIndex] != 0;
+  }
+
+  return false;
+}
+
 // Update physical relay outputs
 static void updateRelayOutputs() {
   for (size_t i = 0; i < RELAY_OUTPUT_COUNT; ++i) {
     RelayConfig rcfg = {};
     Shared_getRelayConfig(i, rcfg);
+
+    SystemSnapshot snap = Shared_getSnapshot();
 
     // If output is disabled, force OFF regardless of shared state
     if (!rcfg.enabled) {
@@ -418,20 +450,23 @@ static void updateRelayOutputs() {
         relayOutputs[i] = false;
         relayAlarmHeld[i] = false;
         Shared_setRelayState(i, false);
+        Shared_setRelayTriggerSource(i, RELAY_SOURCE_NONE);
         digitalWrite(DO_PIN[i], HIGH); // Active LOW: HIGH = OFF
         Serial.printf("[DO%d] Forced OFF - output disabled\n", i + 1);
       }
       continue;
     }
 
-    // If alarm control was turned off while relay was held ON by alarm, release it
-    if (relayAlarmHeld[i] && !rcfg.alarm_control_enabled) {
+    // If a relay is being held by alarm logic but its currently configured
+    // source is no longer active (for example after reassigning DO2 to DI1),
+    // release it so the relay turns OFF.
+    if (relayAlarmHeld[i] && (!rcfg.alarm_control_enabled || !relayAlarmSourceIsActive(rcfg, snap))) {
       relayAlarmHeld[i] = false;
       Shared_setRelayState(i, false);
-      Serial.printf("[DO%d] Released - alarm control disabled\n", i + 1);
+      Shared_setRelayTriggerSource(i, RELAY_SOURCE_NONE);
+      Serial.printf("[DO%d] Released - alarm source no longer active\n", i + 1);
     }
 
-    SystemSnapshot snap = Shared_getSnapshot();
     bool desiredState = snap.relayState[i];
     if (relayOutputs[i] != desiredState) {
       relayOutputs[i] = desiredState;

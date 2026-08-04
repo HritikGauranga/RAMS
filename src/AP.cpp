@@ -2118,7 +2118,6 @@ static const char *htmlPage() {
             </div>
             <div style="font-size:13px;color:#555;margin-top:10px">Status messages are sent at fixed times only: Once a Day at 10:00 ; Twice a Week at 10:00 on Monday and Thursday; Once a Week at 10:00 on Monday.</div>
           </div>
-          </div>
           <div id="hb_status" style="display:none;margin-top:12px;padding:12px;border-radius:4px"></div>
           <div style="display:flex;gap:10px;margin-top:12px">
             <button class="btn primary" onclick="saveHeartbeatConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Status Message</button>
@@ -2574,6 +2573,9 @@ RecipientPicker.prototype.setMask = function(bitmask) {
   // Keep only indices that exist in current contacts
   var self = this;
   this.selected = this.selected.filter(function(idx) { return self._contactByIdx(idx) !== null; });
+  if (this.maxSelections !== MAX_PICKER_SELECTIONS_UNLIMITED && this.selected.length > this.maxSelections) {
+    this.selected = this.selected.slice(0, this.maxSelections);
+  }
   this._render();
 };
 
@@ -2729,7 +2731,7 @@ function loadRecipients(){
       refreshRecipientSelections();
       // Feed heartbeat picker
       if (document.getElementById('hb_contacts')) {
-        var hbPicker = getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED);
+        var hbPicker = getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS);
         var prevMask = hbPicker.getMask();
         hbPicker.setContacts(d.recipients);
         if (prevMask) hbPicker.setMask(prevMask);
@@ -3396,7 +3398,7 @@ function loadHeartbeatConfig() {
     updateHbFreqUI();
 
     // Populate contacts via picker
-    getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS_UNLIMITED).setMask(cfg.selected_contacts || 0);
+    getOrCreatePicker('hb_contacts', MAX_PICKER_SELECTIONS).setMask(cfg.selected_contacts || 0);
   }).catch(function(e) { console.log('heartbeat config load failed', e); });
 }
 

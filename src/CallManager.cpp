@@ -22,6 +22,7 @@ enum CallState : uint8_t {
   CS_WAITING_ANSWER,
   CS_CALL_ANSWERED,   // non-blocking wait for voice path to open
   CS_PLAYING_TTS,
+  CS_WAITING_ACK,     // TTS finished, holding call open for DTMF ACK
   CS_HANGING_UP,
   CS_INTER_CALL_DELAY,
 };
@@ -108,8 +109,9 @@ static String sendAT(const String &cmd, unsigned long timeout, bool silent = tru
   }
   resp.trim();
   if (!silent) Serial.println("[CALL] << " + (resp.length() ? resp : "[NO RESPONSE]"));
-  // Any URC-like lines in the response also go into urcBuf for later inspection
-  if (resp.indexOf("+QTONEDET:") >= 0 || resp.indexOf("+DTMF:") >= 0) {
+  // Route DTMF and TTS-done URCs into urcBuf for later inspection
+  if (resp.indexOf("+QTONEDET:") >= 0 || resp.indexOf("+DTMF:") >= 0 ||
+      resp.indexOf("+QWTTS:") >= 0) {
     urcBuf += resp + "\n";
   }
   return resp;
@@ -154,7 +156,7 @@ static void clearQueueForAlarm(AlarmSource src, size_t index) {
 }
 
 static void setState(CallState s) {
-  const char *names[] = {"IDLE","DIALING","WAITING_ANSWER","CALL_ANSWERED","PLAYING_TTS","HANGING_UP","INTER_CALL_DELAY"};
+  const char *names[] = {"IDLE","DIALING","WAITING_ANSWER","CALL_ANSWERED","PLAYING_TTS","WAITING_ACK","HANGING_UP","INTER_CALL_DELAY"};
   Serial.printf("[CALL] State: %s -> %s\n", names[state], names[s]);
   state = s;
   stateEnteredMs = millis();
@@ -477,7 +479,7 @@ void CallManager_tick() {
       }
 
       // Enable DTMF detection now that call is active and settled
-      sendAT("AT+QTONEDET=1", 1000, false);
+      sendAT("AT+QTONEDET=1,0", 1000, false);
 
       Serial.printf("[CALL] Voice path ready — playing TTS\n");
       playTTS(currentCall.message);
@@ -486,7 +488,7 @@ void CallManager_tick() {
     }
 
     case CS_PLAYING_TTS: {
-      // Check for DTMF ACK — any keypress during playback
+      // DTMF ACK during playback
       if (consumeDTMF()) {
         Serial.println("[CALL] DTMF ACK during TTS");
         CallManager_ack(currentCall.src, currentCall.index);
@@ -495,25 +497,51 @@ void CallManager_tick() {
         return;
       }
 
-      // Check if remote hung up
-      int cs = getCallStatus();
-      if (cs == 0) {
+      // TTS finished — move to ACK window so user can press a key
+      if (consumeTTSDone()) {
+        Serial.println("[CALL] TTS finished — waiting 10s for DTMF ACK");
+        setState(CS_WAITING_ACK);
+        return;
+      }
+
+      // Remote hung up
+      if (getCallStatus() == 0) {
         Serial.println("[CALL] Remote hung up during TTS");
         setState(CS_INTER_CALL_DELAY);
         return;
       }
 
-      // 30s window: covers QWTTS generation (~5s) + playback of long messages
+      // 30s safety window in case +QWTTS: 0 URC is missed
       if (elapsed() >= 30000) {
-        Serial.println("[CALL] TTS playback window elapsed — hanging up");
-        hangUp();
-        setState(CS_INTER_CALL_DELAY);
+        Serial.println("[CALL] TTS safety window elapsed — entering ACK wait");
+        setState(CS_WAITING_ACK);
       }
       break;
     }
 
-    case CS_HANGING_UP: {
-      if (elapsed() >= 2000) setState(CS_INTER_CALL_DELAY);
+    case CS_WAITING_ACK: {
+      // User has 10 seconds after TTS ends to press any key to ACK
+      if (consumeDTMF()) {
+        Serial.println("[CALL] DTMF ACK received");
+        CallManager_ack(currentCall.src, currentCall.index);
+        hangUp();
+        setState(CS_IDLE);
+        return;
+      }
+
+      // Remote hung up without ACKing
+      if (getCallStatus() == 0) {
+        Serial.println("[CALL] Remote hung up without ACK");
+        setState(CS_INTER_CALL_DELAY);
+        return;
+      }
+
+      // ACK window expired
+      if (elapsed() >= 10000) {
+        Serial.println("[CALL] ACK window expired — hanging up");
+        hangUp();
+        setState(CS_INTER_CALL_DELAY);
+      }
       break;
     }
 

@@ -209,37 +209,29 @@ static bool playTTS(const char *text)
 // Finds the MO call (dir=0) to correctly identify our outgoing call.
 // Returns: 0=no call, 1=active, 3=dialing, 4=alerting/ringing
 static int getCallStatus() {
-  String resp = sendAT("AT+CLCC", 2000, false);
-  if (resp.indexOf("+CLCC:") < 0) {
-    Serial.println("[CALL] CLCC: no active call");
-    return 0;
-  }
-  // Parse all +CLCC lines and find the MO entry (dir=0)
-  // +CLCC: <idx>,<dir>,<stat>,<mode>,<mpty>,...
+  String resp = sendAT("AT+CLCC", 2000, true);
+  if (resp.indexOf("+CLCC:") < 0) return 0;
   int searchFrom = 0;
   while (true) {
     int lineStart = resp.indexOf("+CLCC:", searchFrom);
     if (lineStart < 0) break;
-    int comma1 = resp.indexOf(',', lineStart);           // after idx
-    int comma2 = resp.indexOf(',', comma1 + 1);          // after dir
-    int comma3 = resp.indexOf(',', comma2 + 1);          // after stat
+    int comma1 = resp.indexOf(',', lineStart);
+    int comma2 = resp.indexOf(',', comma1 + 1);
+    int comma3 = resp.indexOf(',', comma2 + 1);
     if (comma1 < 0 || comma2 < 0 || comma3 < 0) break;
     String dirStr = resp.substring(comma1 + 1, comma2);
     dirStr.trim();
-    int dir = dirStr.toInt();
-    if (dir == 0) { // MO call — this is ours
+    if (dirStr.toInt() == 0) {
       String statStr = resp.substring(comma2 + 1, comma3);
       statStr.trim();
       int stat = statStr.toInt();
-      Serial.printf("[CALL] CLCC MO entry stat=%d\n", stat);
-      if (stat == 0) return 1; // active
-      if (stat == 2) return 3; // dialing (MO)
-      if (stat == 3) return 4; // alerting (remote ringing)
+      if (stat == 0) return 1;
+      if (stat == 2) return 3;
+      if (stat == 3) return 4;
       return 0;
     }
     searchFrom = comma1 + 1;
   }
-  Serial.println("[CALL] CLCC: no MO call entry found");
   return 0;
 }
 
@@ -491,9 +483,9 @@ void CallManager_tick() {
       // DTMF ACK during playback
       if (consumeDTMF()) {
         Serial.println("[CALL] DTMF ACK during TTS");
-        CallManager_ack(currentCall.src, currentCall.index);
         hangUp();
-        setState(CS_IDLE);
+        setState(CS_INTER_CALL_DELAY);
+        CallManager_ack(currentCall.src, currentCall.index);
         return;
       }
 
@@ -523,9 +515,9 @@ void CallManager_tick() {
       // User has 10 seconds after TTS ends to press any key to ACK
       if (consumeDTMF()) {
         Serial.println("[CALL] DTMF ACK received");
-        CallManager_ack(currentCall.src, currentCall.index);
         hangUp();
-        setState(CS_IDLE);
+        setState(CS_INTER_CALL_DELAY);
+        CallManager_ack(currentCall.src, currentCall.index);
         return;
       }
 

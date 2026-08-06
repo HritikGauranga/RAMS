@@ -1337,10 +1337,8 @@ void Modem_task(void *pvParameters) {
               }
             }
           }
-          // 2. Enqueue voice calls (only for alarm events, not return)
-          if (notifEv.isAlarm) {
-            CallManager_enqueue(notifEv);
-          }
+          // 2. Enqueue voice calls for both alarm and return events
+          CallManager_enqueue(notifEv);
         }
       }
     }

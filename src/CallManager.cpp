@@ -61,7 +61,7 @@ static void drainToUrcBuf() {
 }
 
 // Check urcBuf for a DTMF URC and consume it.
-// EC200U URC format: +QTONEDET: <digit>\r\n
+// EC20 URC format: +DTMF: <digit>\r\n
 static bool consumeDTMF() {
   drainToUrcBuf();
   int idx = urcBuf.indexOf("+QTONEDET:");
@@ -174,7 +174,7 @@ static bool playTTS(const char *text)
         msg = msg.substring(0, 200);
 
     String cmd =
-        "AT+QWTTS=1,0,0,\"" + msg + "\"";
+        "AT+QWTTS=1,0,2,\"" + msg + "\"";
 
     String resp = sendAT(cmd, 15000, false);
 
@@ -222,15 +222,14 @@ void CallManager_init(HardwareSerial &serial) {
   // Redirect all URCs to uart1 (the UART the ESP32 is connected to).
   sendAT("AT+QURCCFG=\"urcport\",\"uart1\"", 2000, false);
 
-  // Keep DAI in its current mode (mode 3, I2S) — do NOT change it.
-  // Voice call audio goes through the baseband codec path, not DAI.
-  // AT+QAUDPLAY plays audio through the voice call codec path directly.
+  // EC20: set audio mode to handset (mode 0) for voice call TTS output.
+  sendAT("AT+QAUDMOD=0", 1000, false);
+
+  // EC20: configure TTS engine — English, female voice, default speed/pitch.
+  sendAT("AT+QTTSETUP=2,1,0", 1000, false);
 
   // Set call audio volume to maximum
   sendAT("AT+CLVL=5", 1000, false);
-
-  // Configure QWTTS language: mode 0 = English
-  // (No separate QTTSETUP needed for QWTTS)
 
   // NOTE: AT+QTONEDET must be sent during an active call, not at init.
 
@@ -443,7 +442,7 @@ void CallManager_tick() {
       }
 
       // Enable DTMF detection now that call is active and settled
-      sendAT("AT+QTONEDET=1,0", 1000, false);
+      sendAT("AT+DDET=1,0,0", 1000, false);
 
       Serial.printf("[CALL] Voice path ready — playing TTS\n");
       playTTS(currentCall.message);
@@ -455,7 +454,7 @@ void CallManager_tick() {
       // Check for DTMF ACK — any keypress during playback
       if (consumeDTMF()) {
         Serial.println("[CALL] DTMF ACK during TTS");
-        sendAT("AT+QAUDSTOP", 1000, false); // stop playback
+        sendAT("AT+QWTTS=0", 1000, false); // stop TTS playback
         CallManager_ack(currentCall.src, currentCall.index);
         hangUp();
         setState(CS_IDLE);
@@ -473,7 +472,7 @@ void CallManager_tick() {
       // 30s window: covers QWTTS generation (~5s) + playback of long messages
       if (elapsed() >= 30000) {
         Serial.println("[CALL] TTS playback window elapsed — hanging up");
-        sendAT("AT+QAUDSTOP", 1000, false);
+        sendAT("AT+QWTTS=0", 1000, false);
         hangUp();
         setState(CS_INTER_CALL_DELAY);
       }

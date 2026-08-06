@@ -991,7 +991,7 @@ static bool sendSingleSMS(const String &number, const String &message) {
 
   sendAT("AT",                 1000);
   sendAT("AT+CMEE=2",          2000);
-  sendAT("AT+CSCS=\"GSM\"",    2000);
+  sendAT("AT+CSCS=\"IRA\"",    2000);
   sendAT("AT+CSMP=17,167,0,0", 2000);
   sendAT("AT+CMGF=1",          2000);
 
@@ -1105,7 +1105,7 @@ static void initModem() {
 
   setModemInitStatusLED(false);
 
-  Serial.println("\n=== Initializing 4G Modem (EC200U) ===");
+  Serial.println("\n=== Initializing 4G Modem (EC20F) ===");
   modemPowerOn();
 
   String res = sendAT("AT", 2000);

@@ -61,14 +61,25 @@ static void drainToUrcBuf() {
 }
 
 // Check urcBuf for a DTMF URC and consume it.
-// EC20 URC format: +DTMF: <digit>\r\n
+// EC20 URC format: +DTMF: <digit>\r\n  or  +QTONEDET: <digit>\r\n
 static bool consumeDTMF() {
   drainToUrcBuf();
   int idx = urcBuf.indexOf("+QTONEDET:");
   if (idx < 0) idx = urcBuf.indexOf("+DTMF:");
   if (idx < 0) return false;
   Serial.println("[CALL] DTMF URC: " + urcBuf.substring(idx, idx + 20));
-  // Remove everything up to and including this URC line
+  int nl = urcBuf.indexOf('\n', idx);
+  urcBuf = (nl >= 0) ? urcBuf.substring(nl + 1) : "";
+  return true;
+}
+
+// Check urcBuf for the EC20 TTS-finished URC (+QWTTS: 0) and consume it.
+static bool consumeTTSDone() {
+  drainToUrcBuf();
+  int idx = urcBuf.indexOf("+QWTTS: 0");
+  if (idx < 0) idx = urcBuf.indexOf("+QWTTS:0");
+  if (idx < 0) return false;
+  Serial.println("[CALL] TTS finished URC received");
   int nl = urcBuf.indexOf('\n', idx);
   urcBuf = (nl >= 0) ? urcBuf.substring(nl + 1) : "";
   return true;
@@ -143,6 +154,8 @@ static void clearQueueForAlarm(AlarmSource src, size_t index) {
 }
 
 static void setState(CallState s) {
+  const char *names[] = {"IDLE","DIALING","WAITING_ANSWER","CALL_ANSWERED","PLAYING_TTS","HANGING_UP","INTER_CALL_DELAY"};
+  Serial.printf("[CALL] State: %s -> %s\n", names[state], names[s]);
   state = s;
   stateEnteredMs = millis();
 }
@@ -190,24 +203,41 @@ static bool playTTS(const char *text)
     return false;
 }
 
-// Check call status via AT+CLCC
+// Check call status via AT+CLCC.
+// Finds the MO call (dir=0) to correctly identify our outgoing call.
 // Returns: 0=no call, 1=active, 3=dialing, 4=alerting/ringing
 static int getCallStatus() {
-  String resp = sendAT("AT+CLCC", 2000);
-  if (resp.indexOf("+CLCC:") < 0) return 0;
+  String resp = sendAT("AT+CLCC", 2000, false);
+  if (resp.indexOf("+CLCC:") < 0) {
+    Serial.println("[CALL] CLCC: no active call");
+    return 0;
+  }
+  // Parse all +CLCC lines and find the MO entry (dir=0)
   // +CLCC: <idx>,<dir>,<stat>,<mode>,<mpty>,...
-  // stat: 0=active, 1=held, 2=dialing, 3=alerting, 4=incoming, 5=waiting
-  int clccStart = resp.indexOf("+CLCC:");
-  int comma1 = resp.indexOf(',', clccStart);
-  int comma2 = resp.indexOf(',', comma1 + 1);
-  if (comma1 < 0 || comma2 < 0) return 0;
-  String statStr = resp.substring(comma1 + 1, comma2);
-  statStr.trim();
-  int stat = statStr.toInt();
-  // Map EC200U stat to our convention: 0=active→1, 2=dialing→3, 3=alerting→4
-  if (stat == 0) return 1; // active
-  if (stat == 2) return 3; // dialing (MO)
-  if (stat == 3) return 4; // alerting (remote ringing)
+  int searchFrom = 0;
+  while (true) {
+    int lineStart = resp.indexOf("+CLCC:", searchFrom);
+    if (lineStart < 0) break;
+    int comma1 = resp.indexOf(',', lineStart);           // after idx
+    int comma2 = resp.indexOf(',', comma1 + 1);          // after dir
+    int comma3 = resp.indexOf(',', comma2 + 1);          // after stat
+    if (comma1 < 0 || comma2 < 0 || comma3 < 0) break;
+    String dirStr = resp.substring(comma1 + 1, comma2);
+    dirStr.trim();
+    int dir = dirStr.toInt();
+    if (dir == 0) { // MO call — this is ours
+      String statStr = resp.substring(comma2 + 1, comma3);
+      statStr.trim();
+      int stat = statStr.toInt();
+      Serial.printf("[CALL] CLCC MO entry stat=%d\n", stat);
+      if (stat == 0) return 1; // active
+      if (stat == 2) return 3; // dialing (MO)
+      if (stat == 3) return 4; // alerting (remote ringing)
+      return 0;
+    }
+    searchFrom = comma1 + 1;
+  }
+  Serial.println("[CALL] CLCC: no MO call entry found");
   return 0;
 }
 
@@ -375,6 +405,10 @@ bool CallManager_handleSmsAck(const String &sender, const String &body) {
   return true;
 }
 
+bool CallManager_isBusy() {
+  return state != CS_IDLE;
+}
+
 // ---------------------------------------------------------------------------
 // State machine tick — called every ~25 ms from Modem task
 // ---------------------------------------------------------------------------
@@ -402,7 +436,7 @@ void CallManager_tick() {
       Shared_getAlarmAck(currentCall.src, currentCall.index, acked);
       if (acked) return;
 
-      Serial.printf("[CALL] Dialing %s\n", currentCall.number);
+      Serial.printf("[CALL] Dialing %s (ring timeout %us)\n", currentCall.number, (unsigned)ringTimeoutS);
       dial(currentCall.number);
       setState(CS_DIALING);
       break;
@@ -421,7 +455,8 @@ void CallManager_tick() {
         setState(CS_CALL_ANSWERED);
         return;
       }
-      if (elapsed() >= (unsigned long)ringTimeoutS * 1000UL) {
+      unsigned long timeoutMs = (ringTimeoutS > 0 ? (unsigned long)ringTimeoutS : 30UL) * 1000UL;
+      if (elapsed() >= timeoutMs) {
         Serial.printf("[CALL] Ring timeout for %s\n", currentCall.number);
         hangUp();
         setState(CS_INTER_CALL_DELAY);
@@ -442,7 +477,7 @@ void CallManager_tick() {
       }
 
       // Enable DTMF detection now that call is active and settled
-      sendAT("AT+DDET=1,0,0", 1000, false);
+      sendAT("AT+QTONEDET=1", 1000, false);
 
       Serial.printf("[CALL] Voice path ready — playing TTS\n");
       playTTS(currentCall.message);
@@ -454,7 +489,6 @@ void CallManager_tick() {
       // Check for DTMF ACK — any keypress during playback
       if (consumeDTMF()) {
         Serial.println("[CALL] DTMF ACK during TTS");
-        sendAT("AT+QWTTS=0", 1000, false); // stop TTS playback
         CallManager_ack(currentCall.src, currentCall.index);
         hangUp();
         setState(CS_IDLE);
@@ -472,7 +506,6 @@ void CallManager_tick() {
       // 30s window: covers QWTTS generation (~5s) + playback of long messages
       if (elapsed() >= 30000) {
         Serial.println("[CALL] TTS playback window elapsed — hanging up");
-        sendAT("AT+QWTTS=0", 1000, false);
         hangUp();
         setState(CS_INTER_CALL_DELAY);
       }
@@ -485,7 +518,8 @@ void CallManager_tick() {
     }
 
     case CS_INTER_CALL_DELAY: {
-      if (elapsed() >= (unsigned long)interCallDelayS * 1000UL) {
+      unsigned long delayMs = (interCallDelayS > 0 ? (unsigned long)interCallDelayS : 5UL) * 1000UL;
+      if (elapsed() >= delayMs) {
         setState(CS_IDLE);
       }
       break;

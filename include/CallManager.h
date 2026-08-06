@@ -17,6 +17,10 @@ void CallManager_enqueue(const NotificationEvent &ev);
 // Stops the current call and clears the queue for that alarm.
 void CallManager_ack(AlarmSource src, size_t index);
 
+// Returns true while a call is in progress (dialing, ringing, active, or inter-call delay).
+// Used by Modem task to defer SMS sending so the state machine is not starved.
+bool CallManager_isBusy();
+
 // Tick — call from Modem task loop every 25 ms (non-blocking state machine).
 void CallManager_tick();
 

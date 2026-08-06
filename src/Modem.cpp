@@ -989,7 +989,7 @@ static bool sendSingleSMS(const String &number, const String &message) {
     return false;
   }
 
-  sendAT("AT",                 1000);
+  sendAT("ATE0",              2000);
   sendAT("AT+CMEE=2",          2000);
   sendAT("AT+CSCS=\"IRA\"",    2000);
   sendAT("AT+CSMP=17,167,0,0", 2000);
@@ -1121,8 +1121,9 @@ static void initModem() {
     return;
   }
 
-  sendAT("AT+CMEE=2", 2000);
-  sendAT("AT+CMGF=1", 2000);
+  sendAT("ATE0",              2000);
+  sendAT("AT+CMEE=2",          2000);
+  sendAT("AT+CMGF=1",          2000);
   sendAT("AT+CNMI=2,1,0,0,0", 2000);
   sendAT("AT+CMGD=1,4", 2000);
   bool simOk     = modemSimReady();
@@ -1295,53 +1296,56 @@ void Modem_task(void *pvParameters) {
       }
     }
 
-    // Drain unified notification event queue: SMS first, then enqueue voice calls
-    NotificationEvent notifEv = {};
-    if (Shared_takeNotificationEvent(notifEv)) {
-      if (modemReady) {
-        // 1. Send SMS to all selected contacts with sms_enabled
-        ContactList rec = {};
-        if (Shared_getRecipientContacts(rec) && rec.count > 0) {
-          String msg;
-          if (notifEv.source == ALARM_SRC_DI) {
-            DigitalInputConfig diCfg = {};
-            Shared_getDigitalInputConfig(notifEv.index, diCfg);
-            bool smsEnabled = notifEv.isAlarm ? diCfg.alarm_sms_enabled : diCfg.return_sms_enabled;
-            if (smsEnabled) {
-              msg = notifEv.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
+    // Tick CallManager state machine — must run every loop iteration unblocked
+    CallManager_tick();
+
+    // Drain unified notification event queue: SMS first, then enqueue voice calls.
+    // Skip SMS sending while a call is active so the CallManager tick is not starved.
+    if (!CallManager_isBusy()) {
+      NotificationEvent notifEv = {};
+      if (Shared_takeNotificationEvent(notifEv)) {
+        if (modemReady) {
+          // 1. Send SMS to all selected contacts with sms_enabled
+          ContactList rec = {};
+          if (Shared_getRecipientContacts(rec) && rec.count > 0) {
+            String msg;
+            if (notifEv.source == ALARM_SRC_DI) {
+              DigitalInputConfig diCfg = {};
+              Shared_getDigitalInputConfig(notifEv.index, diCfg);
+              bool smsEnabled = notifEv.isAlarm ? diCfg.alarm_sms_enabled : diCfg.return_sms_enabled;
+              if (smsEnabled) {
+                msg = notifEv.isAlarm ? buildAlarmSMS(diCfg) : buildReturnSMS(diCfg);
+              }
+            } else {
+              AnalogInputConfig aiCfg = {};
+              Shared_getAnalogInputConfig(notifEv.index, aiCfg);
+              bool smsEnabled = notifEv.isAlarm ? aiCfg.alarm_sms_enabled : aiCfg.return_sms_enabled;
+              if (smsEnabled) {
+                msg = notifEv.isAlarm ? buildAnalogAlarmSMS(aiCfg, notifEv.value)
+                                      : buildAnalogReturnSMS(aiCfg, notifEv.value);
+              }
             }
-          } else {
-            AnalogInputConfig aiCfg = {};
-            Shared_getAnalogInputConfig(notifEv.index, aiCfg);
-            bool smsEnabled = notifEv.isAlarm ? aiCfg.alarm_sms_enabled : aiCfg.return_sms_enabled;
-            if (smsEnabled) {
-              msg = notifEv.isAlarm ? buildAnalogAlarmSMS(aiCfg, notifEv.value)
-                                    : buildAnalogReturnSMS(aiCfg, notifEv.value);
+            if (msg.length() > 0) {
+              for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
+                if (!rec.items[i].enabled) continue;
+                if (!(notifEv.selected_contacts & (1UL << i))) continue;
+                if (!rec.items[i].sms_enabled) continue;
+                String normalized;
+                if (!util_normalizePhoneNumber(String(rec.items[i].number), normalized)) continue;
+                if (!modemReady) break;
+                sendSMS(normalized, msg);
+              }
             }
           }
-          if (msg.length() > 0) {
-            for (size_t i = 0; i < rec.count && i < MAX_PHONE_PER_LIST; ++i) {
-              if (!rec.items[i].enabled) continue;
-              if (!(notifEv.selected_contacts & (1UL << i))) continue;
-              if (!rec.items[i].sms_enabled) continue;
-              String normalized;
-              if (!util_normalizePhoneNumber(String(rec.items[i].number), normalized)) continue;
-              if (!modemReady) break;
-              sendSMS(normalized, msg);
-            }
+          // 2. Enqueue voice calls (only for alarm events, not return)
+          if (notifEv.isAlarm) {
+            CallManager_enqueue(notifEv);
           }
-        }
-        // 2. Enqueue voice calls (only for alarm events, not return)
-        if (notifEv.isAlarm) {
-          CallManager_enqueue(notifEv);
         }
       }
     }
 
-    // Tick CallManager state machine
-    CallManager_tick();
-
-    if (now - lastSmsCheckMs >= 5000) {
+    if (!CallManager_isBusy() && now - lastSmsCheckMs >= 5000) {
       lastSmsCheckMs = now;
       checkAndProcessSMS();
     }

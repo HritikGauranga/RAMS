@@ -45,6 +45,9 @@ static uint16_t      ringTimeoutS    = 30;
 static uint16_t      interCallDelayS = 5;
 static uint8_t       ttsRepeatCount  = 0;  // tracks how many TTS repetitions have played
 
+// Quectel TTS speed. 0 is normal speed; positive values speak faster.
+static constexpr int16_t TTS_SPEED_VALUE = 8000;
+
 // URC accumulator — incoming serial bytes are drained here so DTMF URCs
 // are never lost when the Modem task issues AT commands on the same UART.
 static String urcBuf = "";
@@ -227,7 +230,7 @@ static String buildTTSMessage(const CallEntry &call) {
     inputName = String(call.src == ALARM_SRC_DI ? "DI" : "AI") + String((unsigned)(call.index + 1));
 
   String condition = call.isAlarm ? "Alarm" : "Return";
-  String msg = condition + " Condition in SysAlert Mini. ";
+  String msg = condition + " Condition in SisAlert Mini. ";
   msg += "Location: " + location + ". ";
   msg += "Input Name: " + inputName + ". ";
   msg += "State: " + String(call.message) + ".";
@@ -302,11 +305,11 @@ void CallManager_init(HardwareSerial &serial) {
   // EC20: set audio mode to handset (mode 0) for voice call TTS output.
   sendAT("AT+QAUDMOD=0", 1000, false);
 
-  // // EC20: configure TTS engine (3-param form supported by this firmware).
-  // sendAT("AT+QTTSETUP=0,2,5", 1000, false);
+  // EC200U/EG915U: configure TTS speech speed.
+  sendAT(String("AT+QTTSETUP=1,1,") + String(TTS_SPEED_VALUE), 1000, false);
 
   // Set call audio volume to maximum
-  sendAT("AT+CLVL=5", 1000, false);
+  sendAT("AT+CLVL=4", 1000, false);
 
   // NOTE: AT+QTONEDET must be sent during an active call, not at init.
 

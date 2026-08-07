@@ -1,6 +1,7 @@
 #include "CallManager.h"
 #include "Shared.h"
 #include <string.h>
+#include <LittleFS.h>
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -11,6 +12,7 @@ struct CallEntry {
   char   message[64];
   AlarmSource src;
   size_t index;
+  bool   isAlarm;
   bool   valid;
 };
 
@@ -181,6 +183,57 @@ static void hangUp() {
 //   mode 1 = play immediately during active call
 // Returns true if the modem accepted the command.
 
+// Read a string value from system_config.json by key.
+static String callMgr_readSysConfig(const char *key, const char *fallback) {
+  String value = fallback;
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(500))) return value;
+  if (LittleFS.exists("/system_config.json")) {
+    File f = LittleFS.open("/system_config.json", "r");
+    if (f) {
+      String json = f.readString();
+      f.close();
+      String pat = String('"') + key + '"';
+      int ki = json.indexOf(pat);
+      if (ki >= 0) {
+        int ci = json.indexOf(':', ki + pat.length());
+        if (ci >= 0) {
+          int q1 = json.indexOf('"', ci + 1);
+          int q2 = json.indexOf('"', q1 + 1);
+          if (q1 >= 0 && q2 > q1) value = json.substring(q1 + 1, q2);
+        }
+      }
+    }
+  }
+  Shared_unlockFileSystem();
+  value.trim();
+  return value.length() > 0 ? value : String(fallback);
+}
+
+// Build the full TTS announcement string for a call.
+static String buildTTSMessage(const CallEntry &call) {
+  String siteName = callMgr_readSysConfig("site_name", "Unknown Site");
+  String location = callMgr_readSysConfig("site_address", "");
+  if (location.length() == 0) location = siteName;
+
+  String inputName = "";
+  if (call.src == ALARM_SRC_DI) {
+    DigitalInputConfig cfg = {};
+    if (Shared_getDigitalInputConfig(call.index, cfg)) inputName = String(cfg.name);
+  } else {
+    AnalogInputConfig cfg = {};
+    if (Shared_getAnalogInputConfig(call.index, cfg)) inputName = String(cfg.name);
+  }
+  if (inputName.length() == 0)
+    inputName = String(call.src == ALARM_SRC_DI ? "DI" : "AI") + String((unsigned)(call.index + 1));
+
+  String condition = call.isAlarm ? "Alarm" : "Return";
+  String msg = condition + " Condition in SysAlert Mini. ";
+  msg += "Site Name and Location: " + siteName + " and " + location + ". ";
+  msg += "Input Name: " + inputName + ". ";
+  msg += "State: " + String(call.message) + ".";
+  return msg;
+}
+
 static bool playTTS(const char *text)
 {
     String msg(text);
@@ -279,9 +332,10 @@ void CallManager_enqueue(const NotificationEvent &ev) {
     CallEntry e = {};
     strncpy(e.number,  rec.items[i].number, sizeof(e.number) - 1);
     strncpy(e.message, ev.message,          sizeof(e.message) - 1);
-    e.src   = ev.source;
-    e.index = ev.index;
-    e.valid = true;
+    e.src     = ev.source;
+    e.index   = ev.index;
+    e.isAlarm = ev.isAlarm;
+    e.valid   = true;
     enqueueEntry(e);
     Serial.printf("[CALL] Queued call to %s for alarm %d/%u\n",
                   e.number, (int)e.src, (unsigned)e.index);
@@ -474,7 +528,9 @@ void CallManager_tick() {
       sendAT("AT+QTONEDET=1,0", 1000, false);
 
       Serial.printf("[CALL] Voice path ready — playing TTS\n");
-      playTTS(currentCall.message);
+      String ttsMsg = buildTTSMessage(currentCall);
+      Serial.println("[CALL] TTS text: " + ttsMsg);
+      playTTS(ttsMsg.c_str());
       setState(CS_PLAYING_TTS);
       break;
     }

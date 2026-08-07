@@ -302,8 +302,8 @@ void CallManager_init(HardwareSerial &serial) {
   // EC20: set audio mode to handset (mode 0) for voice call TTS output.
   sendAT("AT+QAUDMOD=0", 1000, false);
 
-  // EC20: configure TTS engine — English, male voice, natural speed and pitch.
-  sendAT("AT+QTTSETUP=0,0,5,5", 1000, false);
+  // // EC20: configure TTS engine (3-param form supported by this firmware).
+  // sendAT("AT+QTTSETUP=0,2,5", 1000, false);
 
   // Set call audio volume to maximum
   sendAT("AT+CLVL=5", 1000, false);
@@ -469,12 +469,12 @@ void CallManager_tick() {
 
     case CS_IDLE: {
       if (queueEmpty()) return;
-      // Skip ACKed entries
+      // Skip ACKed entries — but only for alarm calls, not return calls
       while (!queueEmpty()) {
         bool acked = false;
         Shared_getAlarmAck(callQueue[callQueueHead].src,
                            callQueue[callQueueHead].index, acked);
-        if (!acked) break;
+        if (!acked || !callQueue[callQueueHead].isAlarm) break;
         callQueueHead = (callQueueHead + 1) % CALL_QUEUE_SIZE;
         Serial.println("[CALL] Skipping — alarm already ACKed");
       }
@@ -483,7 +483,7 @@ void CallManager_tick() {
 
       bool acked = false;
       Shared_getAlarmAck(currentCall.src, currentCall.index, acked);
-      if (acked) return;
+      if (acked && currentCall.isAlarm) return;
 
       Serial.printf("[CALL] Dialing %s (ring timeout %us)\n", currentCall.number, (unsigned)ringTimeoutS);
       dial(currentCall.number);

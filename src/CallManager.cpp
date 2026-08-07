@@ -43,6 +43,7 @@ static unsigned long stateEnteredMs  = 0;
 static CallEntry     currentCall     = {};
 static uint16_t      ringTimeoutS    = 30;
 static uint16_t      interCallDelayS = 5;
+static uint8_t       ttsRepeatCount  = 0;  // tracks how many TTS repetitions have played
 
 // URC accumulator — incoming serial bytes are drained here so DTMF URCs
 // are never lost when the Modem task issues AT commands on the same UART.
@@ -211,9 +212,8 @@ static String callMgr_readSysConfig(const char *key, const char *fallback) {
 
 // Build the full TTS announcement string for a call.
 static String buildTTSMessage(const CallEntry &call) {
-  String siteName = callMgr_readSysConfig("site_name", "Unknown Site");
   String location = callMgr_readSysConfig("site_address", "");
-  if (location.length() == 0) location = siteName;
+  if (location.length() == 0) location = callMgr_readSysConfig("site_name", "Unknown Site");
 
   String inputName = "";
   if (call.src == ALARM_SRC_DI) {
@@ -228,7 +228,7 @@ static String buildTTSMessage(const CallEntry &call) {
 
   String condition = call.isAlarm ? "Alarm" : "Return";
   String msg = condition + " Condition in SysAlert Mini. ";
-  msg += "Site Name and Location: " + siteName + " and " + location + ". ";
+  msg += "Location: " + location + ". ";
   msg += "Input Name: " + inputName + ". ";
   msg += "State: " + String(call.message) + ".";
   return msg;
@@ -302,8 +302,8 @@ void CallManager_init(HardwareSerial &serial) {
   // EC20: set audio mode to handset (mode 0) for voice call TTS output.
   sendAT("AT+QAUDMOD=0", 1000, false);
 
-  // EC20: configure TTS engine — English, female voice, default speed/pitch.
-  sendAT("AT+QTTSETUP=2,1,0", 1000, false);
+  // EC20: configure TTS engine — English, male voice, natural speed and pitch.
+  sendAT("AT+QTTSETUP=0,0,5,5", 1000, false);
 
   // Set call audio volume to maximum
   sendAT("AT+CLVL=5", 1000, false);
@@ -344,7 +344,8 @@ void CallManager_enqueue(const NotificationEvent &ev) {
 
 void CallManager_ack(AlarmSource src, size_t index) {
   Shared_setAlarmAck(src, index, true);
-  if (state != CS_IDLE && currentCall.src == src && currentCall.index == index) {
+  if (state != CS_IDLE && state != CS_INTER_CALL_DELAY && state != CS_HANGING_UP &&
+      currentCall.src == src && currentCall.index == index) {
     hangUp();
     setState(CS_IDLE);
     Serial.printf("[CALL] ACK — current call terminated (src=%d idx=%u)\n",
@@ -513,10 +514,7 @@ void CallManager_tick() {
     }
 
     case CS_CALL_ANSWERED: {
-      // Wait 3s non-blocking for the voice bearer to fully open.
-      // AT+QAUDPLAY returns 903 if attempted before the voice path is ready.
       if (elapsed() < 3000) {
-        // Check if remote hung up during the wait
         if (getCallStatus() == 0) {
           Serial.println("[CALL] Remote hung up before TTS");
           setState(CS_INTER_CALL_DELAY);
@@ -524,10 +522,10 @@ void CallManager_tick() {
         return;
       }
 
-      // Enable DTMF detection now that call is active and settled
       sendAT("AT+QTONEDET=1,0", 1000, false);
+      ttsRepeatCount = 0;
 
-      Serial.printf("[CALL] Voice path ready — playing TTS\n");
+      Serial.printf("[CALL] Voice path ready — playing TTS (1/5)\n");
       String ttsMsg = buildTTSMessage(currentCall);
       Serial.println("[CALL] TTS text: " + ttsMsg);
       playTTS(ttsMsg.c_str());
@@ -545,10 +543,19 @@ void CallManager_tick() {
         return;
       }
 
-      // TTS finished — move to ACK window so user can press a key
+      // One repetition finished
       if (consumeTTSDone()) {
-        Serial.println("[CALL] TTS finished — waiting 10s for DTMF ACK");
-        setState(CS_WAITING_ACK);
+        ttsRepeatCount++;
+        Serial.printf("[CALL] TTS repetition %u/5 done\n", (unsigned)ttsRepeatCount);
+        if (ttsRepeatCount >= 5) {
+          Serial.println("[CALL] All repetitions done — waiting 10s for DTMF ACK");
+          setState(CS_WAITING_ACK);
+        } else {
+          Serial.printf("[CALL] Playing TTS (%u/5)\n", (unsigned)(ttsRepeatCount + 1));
+          delay(500); // allow TTS engine to settle before next command
+          playTTS(buildTTSMessage(currentCall).c_str());
+          stateEnteredMs = millis();
+        }
         return;
       }
 
@@ -559,7 +566,7 @@ void CallManager_tick() {
         return;
       }
 
-      // 30s safety window in case +QWTTS: 0 URC is missed
+      // 30s safety per repetition in case +QWTTS: 0 URC is missed
       if (elapsed() >= 30000) {
         Serial.println("[CALL] TTS safety window elapsed — entering ACK wait");
         setState(CS_WAITING_ACK);

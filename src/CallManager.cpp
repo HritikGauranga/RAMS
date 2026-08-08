@@ -230,7 +230,7 @@ static String buildTTSMessage(const CallEntry &call) {
     inputName = String(call.src == ALARM_SRC_DI ? "DI" : "AI") + String((unsigned)(call.index + 1));
 
   String condition = call.isAlarm ? "Alarm" : "Return";
-  String msg = condition + " Condition in SisAlert Mini. ";
+  String msg = condition + " Condition in Mini SisAlert. ";
   msg += "Location: " + location + ". ";
   msg += "Input Name: " + inputName + ". ";
   msg += "State: " + String(call.message) + ".";

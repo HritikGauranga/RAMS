@@ -183,7 +183,7 @@ static void hangUp() {
   sendAT("ATH", 3000, false);
 }
 
-// EC200U TTS: AT+QTTS=<mode>,<text>
+// For EC200U TTS: AT+QTTS=<mode>,<text>
 //   mode 1 = play immediately during active call
 // Returns true if the modem accepted the command.
 

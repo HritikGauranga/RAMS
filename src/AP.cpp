@@ -7,8 +7,13 @@
 #include <ESPAsyncWebServer.h>
 #include <ETH.h>
 #include <LittleFS.h>
+#include <Update.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 #include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 #include <time.h>
 #include <cstring>
 #include <new>
@@ -16,23 +21,182 @@
 static AsyncWebServer *server            = nullptr;
 static bool          serverStarted     = false;
 static bool          serverRoutesSetup = false;
+static SemaphoreHandle_t firmwareUpdateMutex = nullptr;
 static const char    *WEBUI_USER        = "Admin";
 static const char    *WEBUI_PASS        = "Admin@123";
 static const char    *AP_PASS_FIXED     = "MSys@1234";
 static const char    *AUTH_COOKIE_NAME  = "MSMSG_AUTH";
 static const char    *SERIAL_FILE_PATH  = "/serialnumber.txt";
 static const char    *SERIAL_META_PATH  = "/serial_meta.txt";
+static const char    *FIRMWARE_VERSION_PATH = "/firmware_version.txt";
 static String         gAuthSessionToken = "";
 #ifndef FW_BUILD_TAG
 #define FW_BUILD_TAG __DATE__ " " __TIME__
 #endif
 static const char *FW_BUILD_TAG_VALUE = FW_BUILD_TAG;
 
+struct FirmwareUploadState {
+  bool authorized;
+  bool lockHeld;
+  bool updateStarted;
+  bool updateFinalized;
+  bool succeeded;
+  String version;
+  String error;
+};
+
 static const char *htmlPage();
 static void sendHtmlPage(AsyncWebServerRequest *request);
 static void setupWebServerRoutes();
 static void startAPMode();
 static void stopAPMode();
+static bool isAuthenticated(AsyncWebServerRequest *request);
+
+static String readFirmwareVersion() {
+  String version;
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return version;
+  if (LittleFS.exists(FIRMWARE_VERSION_PATH)) {
+    File file = LittleFS.open(FIRMWARE_VERSION_PATH, "r");
+    if (file) {
+      version = file.readStringUntil('\n');
+      file.close();
+      version.trim();
+    }
+  }
+  Shared_unlockFileSystem();
+  return version;
+}
+
+static bool saveFirmwareVersion(const String &version) {
+  if (!Shared_lockFileSystem(pdMS_TO_TICKS(1000))) return false;
+  File file = LittleFS.open(FIRMWARE_VERSION_PATH, "w");
+  if (!file) {
+    Shared_unlockFileSystem();
+    return false;
+  }
+  size_t written = file.println(version);
+  file.close();
+  Shared_unlockFileSystem();
+  return written == version.length() + 2;
+}
+
+static void restartAfterFirmwareUpdate(void *pvParameters) {
+  (void)pvParameters;
+  vTaskDelay(pdMS_TO_TICKS(750));
+  ESP.restart();
+}
+
+static bool firmwareVersionFromFilename(const String &filename, String &version) {
+  int separator = filename.lastIndexOf('/');
+  const int backslash = filename.lastIndexOf('\\');
+  if (backslash > separator) separator = backslash;
+  String basename = filename.substring(separator + 1);
+  if (basename.length() <= 4 ||
+      !basename.substring(basename.length() - 4).equalsIgnoreCase(".bin")) return false;
+
+  version = basename.substring(0, basename.length() - 4);
+  if (version.length() == 0 || version.length() > 31) return false;
+  for (size_t i = 0; i < version.length(); ++i) {
+    const char c = version.charAt(i);
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+  }
+  if (version.charAt(0) >= 'a' && version.charAt(0) <= 'z') {
+    version.setCharAt(0, (char)(version.charAt(0) - 'a' + 'A'));
+  }
+  return true;
+}
+
+static void firmwareUploadDisconnected(FirmwareUploadState *state) {
+  if (state == nullptr) return;
+  const bool restart = state->succeeded;
+  if (state->updateStarted && !state->updateFinalized) Update.abort();
+  if (state->lockHeld && firmwareUpdateMutex != nullptr) {
+    xSemaphoreGive(firmwareUpdateMutex);
+  }
+  delete state;
+  if (restart &&
+      xTaskCreate(restartAfterFirmwareUpdate, "FwRestart", 3072, nullptr, 1, nullptr) != pdPASS) {
+    Serial.println("[FW] Could not create restart task; restarting immediately");
+    ESP.restart();
+  }
+}
+
+static void handleFirmwareUpload(AsyncWebServerRequest *request, const String &filename,
+                                size_t index, uint8_t *data, size_t len, bool final) {
+  FirmwareUploadState *state = static_cast<FirmwareUploadState *>(request->_tempObject);
+  if (index == 0) {
+    if (state != nullptr) {
+      state->error = "Only one firmware file can be uploaded at a time";
+      if (state->updateStarted && !state->updateFinalized) {
+        Update.abort();
+        state->updateStarted = false;
+      }
+      return;
+    }
+    state = new (std::nothrow) FirmwareUploadState{};
+    if (state == nullptr) return;
+    request->_tempObject = state;
+    request->onDisconnect([state]() { firmwareUploadDisconnected(state); });
+
+    state->authorized = isAuthenticated(request);
+    if (!state->authorized) {
+      state->error = "Unauthorized";
+      return;
+    }
+    if (!firmwareVersionFromFilename(filename, state->version)) {
+      state->error = "Choose a .bin file with a version name, for example firmwareV1.bin";
+      return;
+    }
+    if (firmwareUpdateMutex == nullptr ||
+        xSemaphoreTake(firmwareUpdateMutex, 0) != pdTRUE) {
+      state->error = "Firmware updater is busy or unavailable";
+      return;
+    }
+    state->lockHeld = true;
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+      state->error = String("Could not start firmware update: ") + Update.errorString();
+      return;
+    }
+    state->updateStarted = true;
+  }
+
+  if (state == nullptr || !state->authorized || state->error.length() > 0) return;
+
+  if (len > 0 && Update.write(data, len) != len) {
+    state->error = String("Firmware write failed: ") + Update.errorString();
+    Update.abort();
+    state->updateStarted = false;
+    return;
+  }
+
+  if (final) {
+    if (!Update.end(true)) {
+      state->error = String("Firmware validation failed: ") + Update.errorString();
+      state->updateFinalized = true;
+      return;
+    }
+    state->updateFinalized = true;
+
+    if (!saveFirmwareVersion(state->version)) {
+      const esp_partition_t *runningPartition = esp_ota_get_running_partition();
+      if (runningPartition == nullptr || esp_ota_set_boot_partition(runningPartition) != ESP_OK) {
+        state->error = "Firmware installed but its version could not be saved; device will restart";
+        state->succeeded = true;
+        return;
+      }
+      state->error = "Could not save firmware version; update cancelled";
+      return;
+    }
+    state->succeeded = true;
+  }
+}
+
+static void sendFirmwareResponse(AsyncWebServerRequest *request, int statusCode, const String &body) {
+  AsyncWebServerResponse *response = request->beginResponse(statusCode, "application/json", body);
+  response->addHeader("Connection", "close");
+  request->send(response);
+}
 
 static String makeSessionToken() {
   char buf[33] = {};
@@ -148,7 +312,7 @@ static String loginPage(const String &prefilledUser, bool badCredentials = false
   <form class="panel" method="POST" action="/login" autocomplete="off">
     <div class="brand">
       <img src="/Gaurangalogo.png?v=2" alt="Logo">
-      <h1>RAMS Config Login</h1>
+      <h1>SysAlert Config Login</h1>
     </div>
     __ERROR_BLOCK__
     <label for="user">ID</label>
@@ -370,7 +534,7 @@ static String serialNumberPage(const String &currentSerial, const String &messag
     formBlock = R"rawliteral(
       <form method="POST" action="/serialnumber/">
         <label for="serial">Serial Number</label>
-        <input id="serial" name="serial" type="text" placeholder="e.g. RAMS0001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
+        <input id="serial" name="serial" type="text" placeholder="e.g. SysA0001" required maxlength="32" pattern="[A-Za-z0-9_-]+">
         <button type="submit">Set Serial Number</button>
       </form>
     )rawliteral";
@@ -645,6 +809,48 @@ static void setupWebServerRoutes() {
     Shared_unlockFileSystem();
     request->send(200, "application/json", "{\"success\":true}");
   });
+
+  server->on("/api/firmware-version", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String version = readFirmwareVersion();
+    if (version.length() == 0) version = "Not recorded";
+    request->send(200, "application/json",
+                  "{\"version\":\"" + util_escapeJson(version) + "\"}");
+  });
+
+  server->on("/api/firmware-update", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!isAuthenticated(request)) {
+      sendFirmwareResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    FirmwareUploadState *state = static_cast<FirmwareUploadState *>(request->_tempObject);
+    if (state == nullptr) {
+      sendFirmwareResponse(request, 400, "{\"error\":\"No firmware file received\"}");
+      return;
+    }
+    if (!state->authorized) {
+      sendFirmwareResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    if (!state->succeeded) {
+      sendFirmwareResponse(request, 500,
+                           "{\"error\":\"" + util_escapeJson(state->error.length()
+                               ? state->error : String("Firmware update failed")) + "\"}");
+      return;
+    }
+
+    String body = "{\"success\":true,\"version\":\"" +
+                  util_escapeJson(state->version) + "\"";
+    if (state->error.length() > 0) {
+      body += ",\"warning\":\"" + util_escapeJson(state->error) + "\"";
+    }
+    body += "}";
+    sendFirmwareResponse(request, 200, body);
+  }, handleFirmwareUpload);
 
   server->on("/api/restart-ntp", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!isAuthenticated(request)) {
@@ -1346,6 +1552,13 @@ void AP_taskLoop(void *pvParameters) {
   (void)pvParameters;
   static unsigned long lastStateChange = 0;
 
+  if (firmwareUpdateMutex == nullptr) {
+    firmwareUpdateMutex = xSemaphoreCreateMutex();
+    if (firmwareUpdateMutex == nullptr) {
+      Serial.println("[WEB] ERROR: Failed to create firmware update mutex");
+    }
+  }
+
   // Bring up base Wi-Fi stack without connecting, required by Async web stack.
   WiFi.mode(WIFI_STA);
   delay(50);
@@ -1391,7 +1604,7 @@ static const char *htmlPage() {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>RAMS Dashboard</title>
+<title>SysAlert Dashboard</title>
 <link rel="icon" type="image/png" href="/Gaurangalogo.png?v=2">
 <style>
   :root{--bg:#f3f6f9;--muted:#6b7280;--primary:#1565c0;--card:#eef7ff}
@@ -1454,7 +1667,7 @@ static const char *htmlPage() {
 <body>
   <div class="layout">
     <div class="sidebar">
-      <div class="brand"><img src="/Gaurangalogo.png?v=2" alt="Logo">RAMS</div>
+      <div class="brand"><img src="/Gaurangalogo.png?v=2" alt="Logo">SysAlert</div>
       <ul class="nav" id="nav">
         <li data-tab="dashboard" class="active">Dashboard</li>
         <li data-tab="digital">DI Config</li>
@@ -2088,6 +2301,21 @@ static const char *htmlPage() {
             <button class="btn primary" onclick="saveSystemConfig()" style="flex:1;padding:12px 24px;font-size:14px;font-weight:600">Save Site Details</button>
           </div>
 
+          <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #1565c0">
+            <h3 style="font-size:14px;font-weight:600;margin:0 0 6px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Firmware Update</h3>
+            <div style="font-size:12px;color:#666;margin-bottom:14px">Last updated firmware: <strong id="firmware_version">Loading...</strong></div>
+            <label for="firmware_file" style="font-weight:500;display:block;margin-bottom:6px;font-size:14px">Select firmware (.bin)</label>
+            <input id="firmware_file" type="file" accept=".bin,application/octet-stream" style="display:block;width:100%;max-width:420px;padding:8px;background:#fff;border:1px solid #dfe6ee;border-radius:6px;font-size:13px">
+            <div style="font-size:12px;color:#888;margin-top:6px">The version shown after installation is taken from the filename, e.g. firmwareV1.bin → FirmwareV1.</div>
+            <div id="firmware_progress_wrap" style="display:none;margin-top:12px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+              <div id="firmware_progress" style="height:100%;width:0;background:#1565c0;transition:width .15s"></div>
+            </div>
+            <div id="firmware_status" style="display:none;margin-top:12px;padding:12px;border-radius:4px"></div>
+            <div style="display:flex;gap:10px;margin-top:12px">
+              <button id="firmware_upload_btn" class="btn primary" onclick="uploadFirmware()" style="padding:10px 20px;font-size:14px;font-weight:600">Upload Firmware</button>
+            </div>
+          </div>
+
           <!-- Status Message (Heartbeat) Form -->
           <div style="margin-top:24px;padding:16px;background-color:#f9f9f9;border-radius:6px;border-left:4px solid #fdec02">
             <h3 style="font-size:14px;font-weight:600;margin:0 0 4px 0;color:#333;text-transform:uppercase;letter-spacing:0.5px">Status Message</h3>
@@ -2181,7 +2409,7 @@ function switchToTab(tabName) {
   if (tabName === 'digital') loadDIConfig();
   if (tabName === 'analog') loadAIConfig();
   if (tabName === 'relays') loadDOConfig();
-  if (tabName === 'sysconfig') { loadSystemConfig(); loadHeartbeatConfig(); }
+  if (tabName === 'sysconfig') { loadSystemConfig(); loadFirmwareVersion(); loadHeartbeatConfig(); }
   if (tabName === 'phones' && typeof loadPhones === 'function') loadPhones();
   if (tabName === 'network') { if(typeof loadNetworkCfg === 'function') loadNetworkCfg(); if(typeof loadSIMConfig === 'function') loadSIMConfig(); }
 }
@@ -3061,6 +3289,70 @@ function loadSystemConfig(){
     var tz = document.getElementById('site_timezone');
     if (tz && cfg.timezone) tz.value = cfg.timezone;
   }).catch(e=>{ if (e !== 'auth') console.log('load sysconfig failed', e); });
+}
+
+function loadFirmwareVersion(){
+  fetch('/api/firmware-version').then(function(r){
+    if (r.status === 401) { window.location = '/login'; return Promise.reject('auth'); }
+    return r.json();
+  }).then(function(d){
+    var el = document.getElementById('firmware_version');
+    if (el) el.textContent = d.version || 'Not recorded';
+  }).catch(function(e){ if (e !== 'auth') console.log('firmware version load failed', e); });
+}
+
+function uploadFirmware(){
+  var fileInput = document.getElementById('firmware_file');
+  var file = fileInput && fileInput.files ? fileInput.files[0] : null;
+  if (!file) { showSmallStatus('firmware_status', 'Select a firmware .bin file first', false); return; }
+  if (!/^[A-Za-z0-9_-]+\.bin$/i.test(file.name)) {
+    showSmallStatus('firmware_status', 'Use a .bin filename with letters, numbers, _ or -, e.g. firmwareV1.bin', false);
+    return;
+  }
+
+  var button = document.getElementById('firmware_upload_btn');
+  var progressWrap = document.getElementById('firmware_progress_wrap');
+  var progress = document.getElementById('firmware_progress');
+  button.disabled = true;
+  button.style.opacity = '0.6';
+  progressWrap.style.display = 'block';
+  progress.style.width = '0';
+  showSmallStatus('firmware_status', 'Uploading firmware...', true);
+
+  var formData = new FormData();
+  formData.append('firmware', file, file.name);
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/firmware-update', true);
+  xhr.upload.onprogress = function(event){
+    if (event.lengthComputable) {
+      var percent = Math.round((event.loaded / event.total) * 100);
+      progress.style.width = percent + '%';
+      showSmallStatus('firmware_status', 'Uploading firmware... ' + percent + '%', true);
+    }
+  };
+  xhr.onload = function(){
+    var result = {};
+    try { result = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+    if (xhr.status === 401) { window.location = '/login'; return; }
+    if (xhr.status >= 200 && xhr.status < 300 && result.success) {
+      document.getElementById('firmware_version').textContent = result.version || 'Updated';
+      fileInput.value = '';
+      showSmallStatus('firmware_status',
+        result.warning || 'Firmware ' + (result.version || '') + ' installed. Device is restarting...', !result.warning);
+      return;
+    }
+    showSmallStatus('firmware_status', result.error || 'Firmware upload failed', false);
+    button.disabled = false;
+    button.style.opacity = '1';
+    progressWrap.style.display = 'none';
+  };
+  xhr.onerror = function(){
+    showSmallStatus('firmware_status', 'Upload connection failed. Check the device and try again.', false);
+    button.disabled = false;
+    button.style.opacity = '1';
+    progressWrap.style.display = 'none';
+  };
+  xhr.send(formData);
 }
 
 function saveSystemConfig(){

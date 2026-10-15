@@ -19,9 +19,10 @@ When PlatformIO builds the LittleFS image, it copies files from `data/LittleFS/`
   - Status/heartbeat scheduling configuration.
 - `voicecall.json` -> `/voicecall.json`
   - Voice call dispatch configuration.
+- `firmware_version.txt` -> `/firmware_version.txt`
+  - Created after a successful web firmware update; stores the version label derived from the uploaded `.bin` filename (for example, `firmwareV1.bin` becomes `FirmwareV1`).
 
 ## Notes
 
 - All values in these examples are **dummy** and should be edited to match your device.
 - Phone numbers use dummy values.
-
